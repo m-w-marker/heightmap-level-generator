@@ -178,6 +178,14 @@ async function generate() {
     );
 
     updatePreview();
+
+    // M4: 3D-Mesh aus dem neuen Readback ersetzen
+    if (terrain) {
+        scene.remove(terrain);
+        terrain.geometry.dispose();
+    }
+    terrain = buildTerrainMesh();
+    scene.add(terrain);
 }
 
 // --- 2D-Preview (Farbcodierung nach Höhe) ---
@@ -185,6 +193,7 @@ const preview = document.getElementById('preview');
 const pctx = preview.getContext('2d');
 const pimg = pctx.createImageData(RES, RES);
 
+// Farbrampe (Wasser/Sand/Gras/Fels/Schnee/Straße) — geteilt von 2D-Preview und 3D-Mesh, damit beide bei gleichem Seed identisch bleiben
 const STOPS = [
     [0.0, [196, 178, 128]],   // Sand
     [0.25, [98, 142, 74]],    // Gras
@@ -194,39 +203,96 @@ const STOPS = [
     [1.0, [242, 246, 250]],   // Schnee
 ];
 
-function heightColor(hm, out, o) {
+// schreibt 0–255-Werte (→ Plan/Build.md Datenfluss)
+function terrainColor(out, o, hm, m) {
+    let r, g, b;
     if (hm < params.waterLevel) {
         const t = hm / params.waterLevel;
-        out[o] = 42 + 20 * t;
-        out[o + 1] = 90 + 28 * t;
-        out[o + 2] = 158 + 22 * t;
-        return;
+        r = 42 + 20 * t;
+        g = 90 + 28 * t;
+        b = 158 + 22 * t;
+    } else {
+        const n = Math.min(hm / params.maxH, 1);
+        let a = STOPS[0], c = STOPS[STOPS.length - 1];
+        for (let i = 0; i < STOPS.length - 1; i++) {
+            if (n >= STOPS[i][0] && n <= STOPS[i + 1][0]) { a = STOPS[i]; c = STOPS[i + 1]; break; }
+        }
+        const f = (n - a[0]) / (c[0] - a[0]);
+        r = a[1][0] + (c[1][0] - a[1][0]) * f;
+        g = a[1][1] + (c[1][1] - a[1][1]) * f;
+        b = a[1][2] + (c[1][2] - a[1][2]) * f;
     }
-    const n = Math.min(hm / params.maxH, 1);
-    let a = STOPS[0], b = STOPS[STOPS.length - 1];
-    for (let i = 0; i < STOPS.length - 1; i++) {
-        if (n >= STOPS[i][0] && n <= STOPS[i + 1][0]) { a = STOPS[i]; b = STOPS[i + 1]; break; }
+    if (m > 0.5) {
+        const f = (m - 0.5) * 2; // weiche Kante in der Böschungszone
+        r = r * (1 - f) + 66 * f;
+        g = g * (1 - f) + 66 * f;
+        b = b * (1 - f) + 72 * f;
     }
-    const f = (n - a[0]) / (b[0] - a[0]);
-    out[o] = a[1][0] + (b[1][0] - a[1][0]) * f;
-    out[o + 1] = a[1][1] + (b[1][1] - a[1][1]) * f;
-    out[o + 2] = a[1][2] + (b[1][2] - a[1][2]) * f;
+    out[o] = r;
+    out[o + 1] = g;
+    out[o + 2] = b;
 }
 
 function updatePreview() {
     const d = pimg.data;
     for (let i = 0; i < RES * RES; i++) {
-        heightColor(heights[i] * params.maxH, d, i * 4);
-        const m = roadMask[i];
-        if (m > 0.5) {
-            const f = (m - 0.5) * 2; // weiche Kante in der Böschungszone
-            d[i * 4] = d[i * 4] * (1 - f) + 66 * f;
-            d[i * 4 + 1] = d[i * 4 + 1] * (1 - f) + 66 * f;
-            d[i * 4 + 2] = d[i * 4 + 2] * (1 - f) + 72 * f;
-        }
+        terrainColor(d, i * 4, heights[i] * params.maxH, roadMask[i]);
         d[i * 4 + 3] = 255;
     }
     pctx.putImageData(pimg, 0, 0);
+}
+
+// --- M4: 3D-Terrain (→ Plan/Build.md M4) ---
+const TN = 512; // Vertex je Kante; 1 Unit = 1 m
+const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+let terrain = null;
+
+// Bilinear aus dem 1024²-Readback (Pixelzentren bei (p+0.5)/RES, Kanten geclamped)
+function sampleBilinear(buf, u, v) {
+    const fx = u * RES - 0.5, fy = v * RES - 0.5;
+    const x0 = Math.floor(fx), y0 = Math.floor(fy);
+    const tx = fx - x0, ty = fy - y0;
+    const xa = Math.min(Math.max(x0, 0), RES - 1);
+    const xb = Math.min(Math.max(x0 + 1, 0), RES - 1);
+    const ya = Math.min(Math.max(y0, 0), RES - 1);
+    const yb = Math.min(Math.max(y0 + 1, 0), RES - 1);
+    const top = buf[ya * RES + xa] * (1 - tx) + buf[ya * RES + xb] * tx;
+    const bot = buf[yb * RES + xa] * (1 - tx) + buf[yb * RES + xb] * tx;
+    return top * (1 - ty) + bot * ty;
+}
+
+function buildTerrainMesh() {
+    const pos = new Float32Array(TN * TN * 3);
+    const col = new Float32Array(TN * TN * 3);
+    const idx = new Uint32Array((TN - 1) * (TN - 1) * 6);
+    for (let j = 0; j < TN; j++) {
+        for (let i = 0; i < TN; i++) {
+            const o = (j * TN + i) * 3;
+            const u = i / (TN - 1), v = j / (TN - 1);
+            pos[o] = -MAP / 2 + u * MAP;
+            pos[o + 1] = sampleBilinear(heights, u, v) * params.maxH;
+            pos[o + 2] = -MAP / 2 + v * MAP;
+            terrainColor(col, o, pos[o + 1], sampleBilinear(roadMask, u, v));
+            col[o] /= 255;
+            col[o + 1] /= 255;
+            col[o + 2] /= 255;
+        }
+    }
+    let ii = 0;
+    for (let j = 0; j < TN - 1; j++) {
+        for (let i = 0; i < TN - 1; i++) {
+            const a = j * TN + i, b = a + 1, c = a + TN, d = c + 1;
+            // (a,c,b)+(c,d,b): CCW von oben → Normals zeigen nach +Y
+            idx[ii++] = a; idx[ii++] = c; idx[ii++] = b;
+            idx[ii++] = c; idx[ii++] = d; idx[ii++] = b;
+        }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    geo.computeVertexNormals();
+    return new THREE.Mesh(geo, terrainMat);
 }
 
 generate();

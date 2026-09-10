@@ -69,4 +69,4 @@ Noise in WGSL selbst: Hash (sin), 2D-Value-Noise (cubic), fBm (5 Oktaven), Ridge
 - Kein TAAU (MSAA reicht für die Preview-Qualität)
 
 ## Abgeschlossen
-M1, M2, M3 (2026-07-10)
+M1, M2, M3 (2026-07-10), M4 (2026-09-10)
