@@ -14,11 +14,12 @@ oder `encodeUniforms()` in `app/src/main.js` vollständig lesen.
    (`MemberOffsetAfterStruct`). naga *erhöht* den Offset dafür nicht, sondern meldet den Fehler —
    bei geringem Align des Folgeglieds (vec2-Array: Align 8) bleibt der Offset unter der Grenze.
 
-Konsequenz für `Uniforms`: `roads` (vec4, Align 16) liegt bei **Byte 96**, unabhängig davon, ob
-`Params` 21 (84 B) oder 22 (88 B) Felder hat. JS (`encodeUniforms`) schreibt die Punkte deshalb
-ab Float 24. Die `pad0/pad1` am Ende von `Params` waren für die 22-Felder-Version (88 B) nötig;
-mit der aktuellen 21-Felder-Form sind sie redundant (naga validiert auch ohne sie, 2026-07-10
-geprüft) — Entfernung steht an; bis dahin: nicht entfernen, ohne Regeln 1–3 neu zu prüfen.
+Konsequenz für `Uniforms`: `roads` (vec4, Align 16) liegt bei **Byte 96** — `Params` hat 21
+Felder (84 B), das vec4-Array wird auf 16 Byte aligniert (roundUp(84, 16) = 96). JS
+(`encodeUniforms`) schreibt die Punkte deshalb ab Float 24; `u[21..23]` bleiben frei
+(Buffer 540 floats). Die früheren `pad0/pad1` waren für die 22-Felder-Version (88 B) nötig;
+mit der 21-Felder-Form redundant (naga validiert ohne, 2026-07-10 geprüft) → 2026-09-10
+entfernt (naga + Readback-Check).
 
 ## Befund M3 (2026-07-10) — wie ein Layout-Bug sich zeigt
 

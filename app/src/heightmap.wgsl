@@ -23,9 +23,6 @@ struct Params {
     roadHalfWidth: f32,
     roadSlope: f32,
     roadLevel: f32,
-    // 2× Padding: roads-Array braucht 16-Byte-Align im uniform-Adressraum (→ Plan/Build.md M3)
-    pad0: f32,
-    pad1: f32,
 };
 
 // 8 Straßen × 32 Punkte, feste Größe.

@@ -65,7 +65,7 @@ const params = {
 const uniformsData = new Float32Array(540);
 function encodeUniforms(roads) {
     const u = uniformsData;
-    // Muss 1:1 mit struct Params in heightmap.wgsl übereinstimmen (21 Felder + 2 Padding).
+    // Muss 1:1 mit struct Params in heightmap.wgsl übereinstimmen (21 Felder).
     // roads liegt bei Byte 96: vec4-Array wird auf 16 Byte aligniert (→ Plan/Build.md M3)
     u[0] = params.seed;
     u[1] = MAP;
@@ -88,7 +88,7 @@ function encodeUniforms(roads) {
     u[18] = params.roadWidth / 2;
     u[19] = params.roadSlope;
     u[20] = params.roadLevel;
-    // u[21], u[22]: Padding (bleibt 0)
+    // u[21..23]: frei (Buffer bleibt 540 floats)
     // roads: 1 Punkt = vec4(x, z, 0, 0) — vec2-Arrays sind im uniform-Adressraum ungültig
     for (let k = 0; k < 256; k++) {
         u[24 + 4 * k] = roads[2 * k];
