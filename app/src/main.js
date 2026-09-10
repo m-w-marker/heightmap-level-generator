@@ -65,29 +65,35 @@ const params = {
 const uniformsData = new Float32Array(540);
 function encodeUniforms(roads) {
     const u = uniformsData;
-    // WGSL-Uniform-Layout: Params bei Offset 16 (min. Uniform-Align), roads bei 104 (→ Plan/Build.md M3)
-    u[4] = params.seed;
-    u[5] = MAP;
-    u[6] = RES;
-    u[7] = params.maxH;
-    u[8] = params.baseLevel;
-    u[9] = params.hillAmp;
-    u[10] = 1 / params.hillWave;
-    u[11] = params.mountainAmp;
-    u[12] = 1 / params.mountainWave;
-    u[13] = 1 / params.clusterWave;
-    u[14] = params.cliffDrop;
-    u[15] = 1 / params.cliffWave;
-    u[16] = params.cliffWidth;
-    u[17] = 1 / params.cliffAreaWave;
-    u[18] = params.rimAmp;
-    u[19] = params.rimZone;
-    u[20] = 1 / params.rimWave;
-    u[21] = params.roadCount;
-    u[22] = params.roadWidth / 2;
-    u[23] = params.roadSlope;
-    u[24] = params.roadLevel;
-    for (let i = 0; i < roads.length; i++) u[26 + i] = roads[i];
+    // Muss 1:1 mit struct Params in heightmap.wgsl übereinstimmen (21 Felder + 2 Padding).
+    // roads liegt bei Byte 96: vec4-Array wird auf 16 Byte aligniert (→ Plan/Build.md M3)
+    u[0] = params.seed;
+    u[1] = MAP;
+    u[2] = RES;
+    u[3] = params.maxH;
+    u[4] = params.baseLevel;
+    u[5] = params.hillAmp;
+    u[6] = 1 / params.hillWave;
+    u[7] = params.mountainAmp;
+    u[8] = 1 / params.mountainWave;
+    u[9] = 1 / params.clusterWave;
+    u[10] = params.cliffDrop;
+    u[11] = 1 / params.cliffWave;
+    u[12] = params.cliffWidth;
+    u[13] = 1 / params.cliffAreaWave;
+    u[14] = params.rimAmp;
+    u[15] = params.rimZone;
+    u[16] = 1 / params.rimWave;
+    u[17] = params.roadCount;
+    u[18] = params.roadWidth / 2;
+    u[19] = params.roadSlope;
+    u[20] = params.roadLevel;
+    // u[21], u[22]: Padding (bleibt 0)
+    // roads: 1 Punkt = vec4(x, z, 0, 0) — vec2-Arrays sind im uniform-Adressraum ungültig
+    for (let k = 0; k < 256; k++) {
+        u[24 + 4 * k] = roads[2 * k];
+        u[25 + 4 * k] = roads[2 * k + 1];
+    }
 }
 
 const device = renderer.backend.device;

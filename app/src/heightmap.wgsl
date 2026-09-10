@@ -23,12 +23,16 @@ struct Params {
     roadHalfWidth: f32,
     roadSlope: f32,
     roadLevel: f32,
+    // 2× Padding: roads-Array braucht 16-Byte-Align im uniform-Adressraum (→ Plan/Build.md M3)
+    pad0: f32,
+    pad1: f32,
 };
 
-// 8 Straßen × 32 Punkte, feste Größe (→ Plan/Build.md M3)
+// 8 Straßen × 32 Punkte, feste Größe.
+// vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ Plan/Build.md M3)
 struct Uniforms {
     params: Params,
-    roads: array<vec2<f32>, 256>,
+    roads: array<vec4<f32>, 128>,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -121,7 +125,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     for (var r = 0u; r < nRoads; r = r + 1u) {
         let base = r * 32u;
         for (var s = 0u; s < 31u; s = s + 1u) {
-            let d = distPointSeg(w, u.roads[base + s], u.roads[base + s + 1u]);
+            let d = distPointSeg(w, u.roads[base + s].xy, u.roads[base + s + 1u].xy);
             roadF = max(roadF, 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + u.params.roadSlope, d));
         }
     }

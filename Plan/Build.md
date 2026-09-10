@@ -48,6 +48,14 @@ Noise in WGSL selbst: Hash (sin), 2D-Value-Noise (cubic), fBm (5 Oktaven), Ridge
    Prüfung: Konsole-Stats (Min/Max/Ø/Wasser %) plausibel; Preview zeigt alle Layer; `npm run build` fehlerfrei
 3. **M3 Straßen**: `roadgen.js` (Seed-Polyline), Road-Uniform, Flattening + roadMask →
    Prüfung: Node-Sanity von roadgen (32 Punkte/Straße, in Map-Grenzen); Road-Level im Readback konstant (±0.5 m); Straßen sichtbar in Preview
+   - Befund 2026-07-10 (Firefox): Validierer lehnte das Shader-Modul ab → Compute lief nie,
+     Readback all zeros (100 % Wasser, Road-Level Infinity). Ursachen:
+     (1) `array<vec2<f32>>` im uniform-Adressraum ungültig (Element-Stride 8 kein Vielfaches von 16) → `array<vec4<f32>, 128>` (x, z, 0, 0);
+     (2) `roads` lag dadurch bei Byte 88 statt ≥ 96 (Strukt-Mitglied → Offset ≥ roundUp(16, Span)) → vec4-Align + 2 Padding-floats in `Params`;
+     (3) JS-Encoding stand nicht 1:1 zur WGSL-Feldreihenfolge (M3 tauschte `cliffWidth`/`cliffMaskScale` + `cliffAreaScale` dazwischen, dann wieder entfernt) → `roadCount` wurde als 0.011 gelesen = 0 Straßen; JS schreibt jetzt exakt die 21 Felder, roads ab Float 24 (Byte 96).
+     WGSL mit naga 30 validiert (`C:\naga-proj\target\debug\naga-runner.exe app\src\heightmap.wgsl` → OK).
+     roadgen-Sanity: OK (`npm run sanity`). Ergebnis im Firefox: OK — Road-Level 26.0–26,1 m
+      (Ziel 26 ± 0,5), Straßen sichtbar. **M3 abgeschlossen.**
 4. **M4 3D-Terrain**: `BufferGeometry` 512² + Normals + vertexColors →
    Prüfung: Mesh folgt Heightmap, korrekt gelichtet, OrbitControls flüssig
 5. **M5 GUI + Export**: lil-gui (alle Parameter + Seed, debounced Regenerieren), PNG-Export (Graustufen) →
@@ -59,3 +67,6 @@ Noise in WGSL selbst: Hash (sin), 2D-Value-Noise (cubic), fBm (5 Oktaven), Ridge
 - Keine Gewässer-Geometrie (nur Wasser-Farbe in Preview/3D)
 - Keine Texturen/Gras — nur Farbcodierung nach Höhe
 - Kein TAAU (MSAA reicht für die Preview-Qualität)
+
+## Abgeschlossen
+M1, M2, M3 (2026-07-10)
