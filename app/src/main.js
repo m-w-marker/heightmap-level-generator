@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import WGSL from './heightmap.wgsl?raw';
+import { generateRoads } from './roadgen.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
 const renderer = new WebGPURenderer({ antialias: true });
@@ -55,28 +56,38 @@ const params = {
     rimWave: 90,
     maxH: 120,
     waterLevel: 15,
+    roadCount: 4,
+    roadWidth: 10,
+    roadSlope: 5,
+    roadLevel: 26,
 };
 
-const paramsData = new Float32Array(17);
-function encodeParams() {
-    const p = paramsData; // Feldreihenfolge = WGSL-Struct „Params“
-    p[0] = params.seed;
-    p[1] = MAP;
-    p[2] = RES;
-    p[3] = params.maxH;
-    p[4] = params.baseLevel;
-    p[5] = params.hillAmp;
-    p[6] = 1 / params.hillWave;
-    p[7] = params.mountainAmp;
-    p[8] = 1 / params.mountainWave;
-    p[9] = 1 / params.clusterWave;
-    p[10] = params.cliffDrop;
-    p[11] = 1 / params.cliffWave;
-    p[12] = params.cliffWidth;
-    p[13] = 1 / params.cliffAreaWave;
-    p[14] = params.rimAmp;
-    p[15] = params.rimZone;
-    p[16] = 1 / params.rimWave;
+const uniformsData = new Float32Array(540);
+function encodeUniforms(roads) {
+    const u = uniformsData;
+    // WGSL-Uniform-Layout: Params bei Offset 16 (min. Uniform-Align), roads bei 104 (→ Plan/Build.md M3)
+    u[4] = params.seed;
+    u[5] = MAP;
+    u[6] = RES;
+    u[7] = params.maxH;
+    u[8] = params.baseLevel;
+    u[9] = params.hillAmp;
+    u[10] = 1 / params.hillWave;
+    u[11] = params.mountainAmp;
+    u[12] = 1 / params.mountainWave;
+    u[13] = 1 / params.clusterWave;
+    u[14] = params.cliffDrop;
+    u[15] = 1 / params.cliffWave;
+    u[16] = params.cliffWidth;
+    u[17] = 1 / params.cliffAreaWave;
+    u[18] = params.rimAmp;
+    u[19] = params.rimZone;
+    u[20] = 1 / params.rimWave;
+    u[21] = params.roadCount;
+    u[22] = params.roadWidth / 2;
+    u[23] = params.roadSlope;
+    u[24] = params.roadLevel;
+    for (let i = 0; i < roads.length; i++) u[26 + i] = roads[i];
 }
 
 const device = renderer.backend.device;
@@ -87,7 +98,8 @@ const heightBuf = device.createBuffer({
     size: RES * RES * 4,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
 });
-const paramsBuf = device.createBuffer({ size: 17 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+const uniformsBuf = device.createBuffer({ size: 540 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+const roadMaskBuf = device.createBuffer({ size: RES * RES * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
 
 const pipeline = device.createComputePipeline({
     layout: 'auto',
@@ -100,19 +112,23 @@ const pipeline = device.createComputePipeline({
 const bind = device.createBindGroup({
     layout: pipeline.getBindGroupLayout(0),
     entries: [
-        { binding: 0, resource: { buffer: paramsBuf } },
+        { binding: 0, resource: { buffer: uniformsBuf } },
         { binding: 1, resource: { buffer: heightBuf } },
+        { binding: 2, resource: { buffer: roadMaskBuf } },
     ],
 });
 
 let heights = new Float32Array(RES * RES);
+let roadMask = new Float32Array(RES * RES);
 
 async function generate() {
-    encodeParams();
-    queue.writeBuffer(paramsBuf, 0, paramsData);
+    const roads = generateRoads(params.seed, MAP, params.roadCount);
+    encodeUniforms(roads);
+    queue.writeBuffer(uniformsBuf, 0, uniformsData);
 
+    const bytes = RES * RES * 4;
     const staging = device.createBuffer({
-        size: RES * RES * 4,
+        size: 2 * bytes,
         usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
     });
     const encoder = device.createCommandEncoder();
@@ -121,26 +137,38 @@ async function generate() {
     pass.setBindGroup(0, bind);
     pass.dispatchWorkgroups(RES / 16, RES / 16);
     pass.end();
-    encoder.copyBufferToBuffer(heightBuf, 0, staging, 0, RES * RES * 4);
+    encoder.copyBufferToBuffer(heightBuf, 0, staging, 0, bytes);
+    encoder.copyBufferToBuffer(roadMaskBuf, 0, staging, bytes, bytes);
     queue.submit([encoder.finish()]);
 
     await staging.mapAsync(GPUMapMode.READ);
     const range = staging.getMappedRange();
-    heights = new Float32Array(range.slice(0, RES * RES * 4));
+    heights = new Float32Array(range.slice(0, bytes));
+    roadMask = new Float32Array(range.slice(bytes, 2 * bytes));
     staging.unmap();
     staging.destroy();
 
-    // Konsole-Check (→ Plan/Build.md M2)
+    // Konsole-Check (→ Plan/Build.md M2 + M3)
     let mn = Infinity, mx = -Infinity, sum = 0, water = 0;
+    let roadPx = 0, rMn = Infinity, rMx = -Infinity;
     for (let i = 0; i < heights.length; i++) {
         const h = heights[i] * params.maxH;
         if (h < mn) mn = h;
         if (h > mx) mx = h;
         sum += h;
         if (h < params.waterLevel) water++;
+        const m = roadMask[i];
+        if (m > 0.5) roadPx++;
+        if (m >= 0.999) {
+            if (h < rMn) rMn = h;
+            if (h > rMx) rMx = h;
+        }
     }
     console.log(
         `Heightmap 1024²: min ${mn.toFixed(1)} m · max ${mx.toFixed(1)} m · Ø ${(sum / heights.length).toFixed(1)} m · Wasser ${(100 * water / heights.length).toFixed(1)} %`
+    );
+    console.log(
+        `Straßen: ${(100 * roadPx / heights.length).toFixed(1)} % · Road-Level ${rMn.toFixed(1)}–${rMx.toFixed(1)} m (Ziel ${params.roadLevel} m ± 0,5)`
     );
 
     updatePreview();
@@ -183,6 +211,13 @@ function updatePreview() {
     const d = pimg.data;
     for (let i = 0; i < RES * RES; i++) {
         heightColor(heights[i] * params.maxH, d, i * 4);
+        const m = roadMask[i];
+        if (m > 0.5) {
+            const f = (m - 0.5) * 2; // weiche Kante in der Böschungszone
+            d[i * 4] = d[i * 4] * (1 - f) + 66 * f;
+            d[i * 4 + 1] = d[i * 4 + 1] * (1 - f) + 66 * f;
+            d[i * 4 + 2] = d[i * 4 + 2] * (1 - f) + 72 * f;
+        }
         d[i * 4 + 3] = 255;
     }
     pctx.putImageData(pimg, 0, 0);

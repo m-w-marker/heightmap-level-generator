@@ -19,10 +19,21 @@ struct Params {
     rimAmp: f32,
     rimZone: f32,
     rimScale: f32,
+    roadCount: f32,
+    roadHalfWidth: f32,
+    roadSlope: f32,
+    roadLevel: f32,
 };
 
-@group(0) @binding(0) var<uniform> p: Params;
+// 8 Straßen × 32 Punkte, feste Größe (→ Plan/Build.md M3)
+struct Uniforms {
+    params: Params,
+    roads: array<vec2<f32>, 256>,
+};
+
+@group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read_write> heights: array<f32>;
+@group(0) @binding(2) var<storage, read_write> roadMask: array<f32>;
 
 // --- Noise ---
 
@@ -69,33 +80,53 @@ fn ridge(p2: vec2<f32>, seed: f32, octaves: i32) -> f32 {
     return v;
 }
 
+// Distanz Punkt → Segment (→ Plan/Build.md WGSL-Design 5)
+fn distPointSeg(pt: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let ab = b - a;
+    let t = clamp(dot(pt - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+    return length(pt - (a + ab * t));
+}
+
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let res = u32(p.res);
+    let res = u32(u.params.res);
     if (gid.x >= res || gid.y >= res) { return; }
     let idx = gid.y * res + gid.x;
 
     let uv = vec2<f32>(f32(gid.x) + 0.5, f32(gid.y) + 0.5) / f32(res);
-    let w = uv * p.mapSize; // Weltkoordinate in Metern
+    let w = uv * u.params.mapSize; // Weltkoordinate in Metern
 
     // 1) Basisterain + Hügel
-    var h = p.baseLevel + fbm(w * p.hillScale, p.seed, 5) * p.hillAmp * 0.5;
+    var h = u.params.baseLevel + fbm(w * u.params.hillScale, u.params.seed, 5) * u.params.hillAmp * 0.5;
 
     // 2) Berge: Cluster-Maske × Ridge
-    let mMask = smoothstep(0.35, 0.65, fbm(w * p.maskScale, p.seed + 101.3, 3));
-    h += mMask * ridge(w * p.mountainScale, p.seed + 202.7, 5) * p.mountainAmp;
+    let mMask = smoothstep(0.35, 0.65, fbm(w * u.params.maskScale, u.params.seed + 101.3, 3));
+    h += mMask * ridge(w * u.params.mountainScale, u.params.seed + 202.7, 5) * u.params.mountainAmp;
 
     // 3) Abrisskanten: Plateaus mit steilen Bruchkanten
     // vereinfacht: Meter → Noise-Band über Gradient ≈ 0.5 × Scale
-    let cn = fbm(w * p.cliffScale, p.seed + 303.1, 4) * 0.5 + 0.5;
-    let cMask = smoothstep(0.30, 0.60, fbm(w * p.cliffMaskScale, p.seed + 404.9, 3));
-    let band = max(p.cliffWidth * p.cliffScale * 0.5, 0.02);
-    h += cMask * (smoothstep(0.5 - band, 0.5 + band, cn) * 2.0 - 1.0) * p.cliffDrop * 0.5;
+    let cn = fbm(w * u.params.cliffScale, u.params.seed + 303.1, 4) * 0.5 + 0.5;
+    let cMask = smoothstep(0.30, 0.60, fbm(w * u.params.cliffMaskScale, u.params.seed + 404.9, 3));
+    let band = max(u.params.cliffWidth * u.params.cliffScale * 0.5, 0.02);
+    h += cMask * (smoothstep(0.5 - band, 0.5 + band, cn) * 2.0 - 1.0) * u.params.cliffDrop * 0.5;
 
     // 4) Rand-Ring: Anhöhe Richtung Map-Kante
-    let edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * p.mapSize;
-    let rimF = 1.0 - smoothstep(0.0, p.rimZone, edge);
-    h += rimF * (0.6 + 0.4 * fbm(w * p.rimScale, p.seed + 505.3, 3)) * p.rimAmp;
+    let edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * u.params.mapSize;
+    let rimF = 1.0 - smoothstep(0.0, u.params.rimZone, edge);
+    h += rimF * (0.6 + 0.4 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp;
 
-    heights[idx] = clamp(h / p.maxH, 0.0, 1.0);
+    // 5) Straßen: Min-Distanz Punkt → Segment über alle Polylines — gewinnt über allem
+    var roadF = 0.0;
+    let nRoads = u32(u.params.roadCount);
+    for (var r = 0u; r < nRoads; r = r + 1u) {
+        let base = r * 32u;
+        for (var s = 0u; s < 31u; s = s + 1u) {
+            let d = distPointSeg(w, u.roads[base + s], u.roads[base + s + 1u]);
+            roadF = max(roadF, 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + u.params.roadSlope, d));
+        }
+    }
+    h = mix(h, u.params.roadLevel, roadF);
+
+    heights[idx] = clamp(h / u.params.maxH, 0.0, 1.0);
+    roadMask[idx] = roadF;
 }
