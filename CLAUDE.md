@@ -9,11 +9,15 @@ Live-Tuning per GUI, Seed-basiert regenerierbar.
 - `CLAUDE.md` — diese Datei: Kontext & Konventionen. **Kein Status.** (Status: `git log` + `Plan/`)
 - `.clinerules/` — Regeln für KI-Sessionen (autogeladen)
 - `Plan/` — Baupläne. Vorlage: `_TEMPLATE.md`. Fertig: `erledigt/`.
+- `rules/` — Detaildateien je Thema: Begründung der No-Gos (Zahlen, Fehler, Tests). Vor Änderung
+  des Themas lesen – Zuordnung über die Themen-Tabelle unten.
 - `app/` — die komplette App (Vite + three.js)
 
 ## Kommandos (in `app/`)
     npm install
     npm run dev        # → http://localhost:5173
+    npm run build      # Produktions-Build als Smoke-Test
+    npm run sanity     # roadgen-Sanity in Node (ohne Browser)
 
 ## Tech-Stack
 - three.js (WebGPURenderer) — Version: `app/package.json`
@@ -38,3 +42,15 @@ Seed + Parameter → CPU `app/src/roadgen.js` (Straßen-Polyline)
 - WebGPU: `maxWorkgroupSizeTotal = 256` → Workgroup 16×16, **kein** 64×64
 - Readback: Staging-Buffer `MAP_READ` + `copyBufferToBuffer` + `mapAsync` + `getMappedRange().slice(0)`
 - `queue.writeBuffer` braucht `COPY_DST` auf dem Ziel-Buffer (sonst bleibt der Buffer still bei 0 → alle Parameter null → WGSL liefert Nullen)
+
+## No-Gos (Satz = Verbot + Datum + Zeiger; Begründung und Zahlen in rules/<thema>.md)
+- NICHT `array<vec2<f32>>` o. ä. mit Element-Stride < 16 B im uniform-Adressraum deklarieren (2026-07-10 → rules/wgsl.md)
+- NICHT WGSL-Änderungen ohne naga-Prüflauf (`C:\naga-proj\target\debug\naga-runner.exe app\src\heightmap.wgsl`) im Browser testen (2026-07-10 → rules/wgsl.md)
+- NICHT Felder von `struct Params` in `heightmap.wgsl` ändern, ohne `encodeUniforms()` in `main.js` im selben Zug 1:1 anzupassen (2026-07-10 → rules/wgsl.md)
+
+## Themen-Tabelle (Thema | Dateien | Detaildatei)
+| Thema | Dateien | Detaildatei |
+|---|---|---|
+| WGSL-Compute, Uniform-Layout, Readback | `app/src/heightmap.wgsl`, `app/src/main.js` (`encodeUniforms`, Readback) | `rules/wgsl.md` |
+| Straßen-Generierung (CPU) | `app/src/roadgen.js`, `app/tests/roadgen.sanity.mjs` | – |
+| Preview & 3D-Rendering | `app/src/main.js` | – |

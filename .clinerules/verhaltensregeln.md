@@ -24,7 +24,8 @@
    Messung, Entscheidung gegen das Naheliegende) – keine Nacherzählung, keine Kommentar-Blöcke, keine
    Daten oder Testprotokolle (das sagt `git log`). Deutlich unter 1 Kommentarzeile je 5 Zeilen Code.
    Die Tiefe gehört in die Doku, der Code trägt einen **Zeiger**: `// → Plan/NNN §x` (Befund im Plan)
-   oder `// → verhaltensregeln #N` (Regel-N in `.clinerules/`). Der Zeiger ersetzt Blöcke ab 3 Zeilen;
+   oder `// → verhaltensregeln #N` (Regel-N in `.clinerules/`) oder `// → rules/<thema>.md`
+    (Begründung in der Detaildatei). Der Zeiger ersetzt Blöcke ab 3 Zeilen;
    an einen Ein-Zeiler wird er nur angehängt. Doppelt gepflegt heißt: eine Fassung ist bald falsch,
    und das ist die im Code.
    Bewusst zu einfach gebaut, mit bekannter Grenze? Der Kommentar beginnt mit `// vereinfacht:` und
@@ -59,7 +60,7 @@
 > späteren Milestone wird vorher vorbereitet, angelegt oder „schon mal mitgedacht".
 
 ## Arbeitsweise
-Vor jedem Task die Docs des aktuellen Milestones lesen und `Plan/` prüfen. Neue Features und Änderungen
+Vor jedem Task die Docs des aktuellen Milestones lesen und `Plan/` prüfen; trifft die Aufgabe ein Thema mit Detaildatei, zuerst die `rules/<thema>.md` lesen (Zuordnung: Themen-Tabelle in CLAUDE.md). Neue Features und Änderungen
 an Entscheidungen laufen über einen Plan (`Plan/_TEMPLATE.md`), nie direkt in den Code. Fertige Pläne
 wandern per `git mv` nach `Plan/erledigt/`. **Was fertig ist, sagt `git log`; was offen ist, steht im
 jeweiligen Plan – in CLAUDE.md steht kein Status.**
