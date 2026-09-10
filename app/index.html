@@ -7,9 +7,17 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; }
       canvas { display: block; }
+      #preview {
+        position: fixed; left: 12px; bottom: 12px;
+        width: 260px; height: 260px;
+        border: 1px solid #3a4150; border-radius: 8px;
+        box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+        z-index: 10;
+      }
     </style>
   </head>
   <body>
+    <canvas id="preview" width="1024" height="1024"></canvas>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
