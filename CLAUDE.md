@@ -34,6 +34,7 @@ Seed + Parameter → CPU `app/src/roadgen.js` (Straßen-Polyline)
 - three.js WebGPU-API ändert sich zwischen Versionen → vor API-Änderungen `app/package.json` prüfen
 
 ## Pitfalls
-- `WebGPURenderer` ist asynchron: `await renderer.init()` vor jeder Nutzung; Device/Queue über `renderer.gpu.device` / `renderer.gpu.queue`
+- `WebGPURenderer` ist asynchron: `await renderer.init()` vor jeder Nutzung; Device über `renderer.backend.device`, Queue über `device.queue` (Standard-WebGPU) — `renderer.gpu` existiert in r186 nicht
 - WebGPU: `maxWorkgroupSizeTotal = 256` → Workgroup 16×16, **kein** 64×64
 - Readback: Staging-Buffer `MAP_READ` + `copyBufferToBuffer` + `mapAsync` + `getMappedRange().slice(0)`
+- `queue.writeBuffer` braucht `COPY_DST` auf dem Ziel-Buffer (sonst bleibt der Buffer still bei 0 → alle Parameter null → WGSL liefert Nullen)
