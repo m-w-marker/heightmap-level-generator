@@ -1,15 +1,42 @@
-# Projekt-Regeln
+# Projekt: WebGPU Heightmap Generator
 
-Zu Beginn jeder Session:
-1. Lies `CLAUDE.md` im Projekt-Root (Struktur, Stack, Konventionen, Pitfalls, No-Gos, Themen-Tabelle).
-2. Lies den Plan des aktuellen Milestones aus `Plan/` (offene Punkte stehen dort).
-3. Für das anstehende Thema: die in der CLAUDE.md-Themen-Tabelle genannte `rules/<thema>.md` vollständig lesen.
-4. Was fertig ist, sagt `git log`; was offen ist, steht im jeweiligen Plan — **nicht** in CLAUDE.md.
+Prozeduraler Heightmap-Generator auf WebGPU-Compute (WGSL): 1024² f32 für eine 400×400-m-Map.
+Straßen, Abrisskanten, Hügel, Berge, Rand-Ring. Live-Tuning per GUI, Seed-basiert.
 
-## Doku-Pflicht (vor dem Commit, in dieser Reihenfolge)
-1. `rules/<thema>.md` der betroffenen Themen ergänzen: was gebaut, welche Funktion, welcher Test,
-   was bewusst NICHT — und warum.
-2. Neue Regel = „NICHT…"-Satz mit Datum + Zeiger in den No-Gos von CLAUDE.md **und** Begründung
-   in `rules/<thema>.md` — beide Stellen, nie nur eine.
-3. Neue Datei angelegt = Zeile in der CLAUDE.md-Themen-Tabelle.
-4. Am Ende der Antwort die geänderten Doku-Dateien auflisten. Fehlt die Liste, ist die Aufgabe nicht fertig.
+## Wo steht was
+- `.clinerules/` — Regeln, werden automatisch geladen. Thema-Regeln (mit `paths:`) laden nur, wenn passende
+  Dateien im Spiel sind. **Nicht manuell lesen.**
+- `Plan/*.md` — offene Pläne: Ziel, Schritte, Status. `Plan/erledigt/` nur bei Bedarf.
+- `git log` — was fertig ist.
+- `app/` — die App (Vite + three.js, Version in `app/package.json`)
+
+## Kommandos (in `app/`)
+`npm run dev` (→ localhost:5173) · `npm run build` · `npm run sanity` · `npm run check` (alles, sobald vorhanden)
+
+## Datenfluss
+Seed + Params → `roadgen.js` (CPU-Polylines) → Uniform-Buffer → `heightmap.wgsl` (Compute 16×16)
+→ Storage `heights` + `roadMask` → Readback → 2D-Preview (Canvas 1024²) + 3D-Mesh (512², `computeVertexNormals`)
+
+## Konventionen
+- 1 Unit = 1 m. Höhen im Buffer normalisiert 0–1 (× `maxH`). Wasser-Spiegel 15 m.
+- Terrain-Parameter in Metern, nicht in UV.
+- Straßen: Flattening auf `roadLevel`, gewinnt über allem.
+- 3D-Geometrie CPU-seitig aus der Heightmap (nicht `displacementMap`) → korrekte Normals.
+
+## Pitfalls (three r186 / WebGPU)
+- `await renderer.init()` vor Nutzung. Device: `renderer.backend.device`, Queue: `device.queue` (`renderer.gpu` gibt es nicht).
+- Workgroup max. 256 Threads → 16×16.
+- Readback: Staging `MAP_READ` + `copyBufferToBuffer` + `mapAsync` + `getMappedRange().slice(0)`.
+- `queue.writeBuffer` braucht `COPY_DST`, sonst bleibt der Buffer still auf 0.
+- Die three-WebGPU-API ändert sich je Version → vor neuer API die Version in `app/package.json` prüfen.
+
+## Ablauf
+- Auftrag → offenen Plan in `Plan/` lesen, dann **nur die Dateien, die der Schritt braucht**. Nicht vorsorglich alles lesen.
+- Neues Feature oder geänderte Entscheidung → erst Plan (`Plan/_TEMPLATE.md`). Plan fertig → `git mv` nach `Plan/erledigt/`.
+
+## Doku (vor dem Commit)
+- Befund / neue Regel → **nur** in die Thema-Regel `.clinerules/<thema>.md`: „NICHT …“-Zeile + höchstens 2 Sätze Warum.
+  Keine Fehlergeschichte, die steht in `git log`.
+- Neues Thema → neue `.clinerules/<thema>.md` mit `paths:`-Frontmatter. Neue Datei zu einem bestehenden Thema → in dessen `paths:` eintragen.
+- Plan-Schritt fertig → im Plan abhaken, mit Datum.
+- Kein Status in `.clinerules/`.
