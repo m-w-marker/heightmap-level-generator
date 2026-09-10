@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import WGSL from './heightmap.wgsl?raw';
-import { generateRoads } from './roadgen.js';
-import { encodeUniforms } from './uniforms.js';
+import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
+import { encodeUniforms, ROADS_OFFSET } from './uniforms.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
 const renderer = new WebGPURenderer({ antialias: true });
@@ -63,7 +63,7 @@ const params = {
     roadLevel: 26,
 };
 
-const uniformsData = new Float32Array(540);
+const uniformsData = new Float32Array(ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS);
 
 const device = renderer.backend.device;
 const queue = device.queue;
@@ -73,7 +73,7 @@ const heightBuf = device.createBuffer({
     size: RES * RES * 4,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
 });
-const uniformsBuf = device.createBuffer({ size: 540 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+const uniformsBuf = device.createBuffer({ size: uniformsData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 const roadMaskBuf = device.createBuffer({ size: RES * RES * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
 
 const pipeline = device.createComputePipeline({

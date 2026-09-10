@@ -29,7 +29,7 @@ struct Params {
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ Plan/Build.md M3)
 struct Uniforms {
     params: Params,
-    roads: array<vec4<f32>, 128>,
+    roads: array<vec4<f32>, 256>,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -118,7 +118,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // 5) Straßen: Min-Distanz Punkt → Segment über alle Polylines — gewinnt über allem
     var roadF = 0.0;
-    let nRoads = u32(u.params.roadCount);
+    let nRoads = min(u32(u.params.roadCount), 8u);
     for (var r = 0u; r < nRoads; r = r + 1u) {
         let base = r * 32u;
         for (var s = 0u; s < 31u; s = s + 1u) {
