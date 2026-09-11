@@ -8,7 +8,7 @@
     "build": "vite build",
     "naga": "C:\\naga-proj\\target\\debug\\naga-runner.exe src\\heightmap.wgsl",
     "check": "npm run naga && npm run sanity && npm run build",
-    "sanity": "node tests/roadgen.sanity.mjs && node tests/uniforms.layout.mjs && node tests/terrain.stats.mjs",
+    "sanity": "node tests/roadgen.sanity.mjs && node tests/uniforms.layout.mjs && node tests/terrain.stats.mjs && node tests/png.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

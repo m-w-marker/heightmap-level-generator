@@ -1,6 +1,6 @@
 # Plan: 16-Bit-Heightmap, Metadaten, Splatmap
 
-**Status:** offen
+**Status:** in Arbeit
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -25,7 +25,8 @@ zum Texturieren. Ziel ist die eigene WebGPU-Engine, aber engine-neutral.
    an erwarteten Stellen (Overlay-Screenshot).
 
 ## Abgeschlossen
-- [ ] E1 PNG-Encoder + 16-Bit + JSON — geprüft am
+- [x] E1 PNG-Encoder + 16-Bit + JSON — geprüft am 2026-09-11 (Node-Test bit-genau; headless Mountains:
+  16 Bit = 8 Bit ± 0 Stufen, 4370 verschiedene Werte in 5000 Stichproben; maxH 275 m → 8-Bit-Stufe wäre 1,1 m)
 - [ ] E2 Splatmap — geprüft am
 
 <!-- fertig: git mv Plan/Export.md Plan/erledigt/ -->

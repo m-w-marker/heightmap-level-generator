@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildPanel } from './ui.js';
+import { encodePng } from './png.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, ROADS_OFFSET, autoMaxH } from './uniforms.js';
@@ -443,7 +444,11 @@ const panel = buildPanel(params, {
     preset: name => applyPreset(ALL_PRESETS[name]),
     save: saveSettings,
     load: () => loadInput.click(),
-    exports: { 'Heightmap PNG (8-bit)': exportPng },
+    exports: {
+        'Heightmap PNG (16-bit)': exportPng16,
+        'Metadata JSON': exportMeta,
+        'Heightmap PNG (8-bit preview)': exportPng,
+    },
     regenerate: runGenerate,
 });
 panel.guis.World.add(params, 'maxH').name('Max height (auto, m)').decimals(1).disable().listen();
@@ -504,7 +509,28 @@ function exportPng() {
         d[i * 4 + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
-    c.toBlob(blob => download(blob, `heightmap-${params.seed}.png`), 'image/png');
+    c.toBlob(blob => download(blob, `heightmap-${params.seed}-8bit.png`), 'image/png');
+}
+
+// 16 Bit: Stufe maxH / 65535 (≈ 2 mm) statt maxH / 255 (≈ 0,45 m bei 114 m) (→ Plan/Export.md)
+async function exportPng16() {
+    const px = new Uint16Array(RES * RES);
+    for (let i = 0; i < px.length; i++) px[i] = Math.round(heights[i] * 65535); // heights schon 0–1 geklemmt
+    download(await encodePng(RES, RES, px, 1, 16), `heightmap-${params.seed}-16bit.png`);
+}
+
+// Maßstab + Konvention für die Engine, dazu alle Einstellungen (Save-Format) → reproduzierbar
+function exportMeta() {
+    const meta = {
+        mapSize: MAP,
+        resolution: RES,
+        maxH: params.maxH,
+        waterLevel: params.waterLevel,
+        height: 'height_m = value / 65535 * maxH (16-bit PNG); value / 255 * maxH (8-bit)',
+        pixels: 'pixel (i, j) = map ((i + 0.5) / resolution * mapSize, (j + 0.5) / resolution * mapSize); row j = map y (three.js +z)',
+        settings: pickParams(params),
+    };
+    download(new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }), `heightmap-${params.seed}-meta.json`);
 }
 
 runGenerate();
