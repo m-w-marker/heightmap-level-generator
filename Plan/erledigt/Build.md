@@ -1,6 +1,6 @@
 # Build-Plan: WebGPU Heightmap Generator
 
-**Status:** offen
+**Status:** fertig
 **Datum:** 2026-09-10
 
 ## Ziel
