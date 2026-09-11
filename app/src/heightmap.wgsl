@@ -36,6 +36,7 @@ const ROAD_POINTS = 32u;
 const SLOPE_VAR_WAVE = 40.0; // m
 const SLOPE_MIN = 0.1745;    // 10° in rad
 const SLOPE_MAX = 1.0472;    // 60° in rad (steiler → senkrechte Streifenwände im 512²-Mesh)
+const BANK_CURVE = 10.0;     // m: Böschungsneigung (tan) wächst je BANK_CURVE m Abstand um 1 (→ Plan/Boeschung.md)
 
 // Punkt = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
@@ -159,9 +160,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // vereinfacht: nur die nächste Straße klemmt – Kreuzungen mit abweichendem Level knicken an der Mittellinie
     // Böschungswinkel schwankt entlang der Straße (Noise, Wellenlänge SLOPE_VAR_WAVE) → mal Schulter, mal Abrisskante
     if (nRoads > 0u) {
-        let ang = clamp(u.params.roadSlope + u.params.roadSlopeVar * vnoise(w / SLOPE_VAR_WAVE, u.params.seed + 606.1),
-            SLOPE_MIN, SLOPE_MAX);
-        let e = u.params.roadTolerance + max(dMin - u.params.roadHalfWidth, 0.0) * tan(ang);
+        // Schwankung auf den Abstand zu SLOPE_MIN/MAX begrenzt (hinterher klemmen → Winkel klebt an der Grenze)
+        let ang0 = clamp(u.params.roadSlope, SLOPE_MIN, SLOPE_MAX);
+        let vary = min(u.params.roadSlopeVar, min(ang0 - SLOPE_MIN, SLOPE_MAX - ang0));
+        let s0 = tan(ang0 + vary * vnoise(w / SLOPE_VAR_WAVE, u.params.seed + 606.1));
+        // Neigung s0 am Fahrbahnrand, dann +1 je BANK_CURVE m bis tan(SLOPE_MAX); e = Integral → Schulter statt
+        // endlosem Kegel (der rasiert bei flachem Winkel Berge 100 m neben der Straße)
+        let sM = tan(SLOPE_MAX);
+        let d = max(dMin - u.params.roadHalfWidth, 0.0);
+        let dc = min(d, (sM - s0) * BANK_CURVE);
+        let e = u.params.roadTolerance + s0 * dc + dc * dc / (2.0 * BANK_CURVE) + sM * (d - dc);
         h = clamp(h, roadL - e, roadL + e);
     }
 

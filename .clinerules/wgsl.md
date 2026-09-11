@@ -13,6 +13,8 @@ paths:
 - NICHT WGSL im Browser testen ohne naga-Lauf vorher.
 - NICHT das Straßen-Level vom Segment mit dem größten Gewicht nehmen, sondern vom nächstgelegenen. Innerhalb der Fahrbahn ist das Gewicht für alle nahen Segmente 1 → das erste gewinnt → Level-Treppen.
 - NICHT Straßen-Böschung als feste Breite (`mix` über `smoothstep`), sondern als Neigung (Gelände in Kegel um das Level klemmen). Feste Breite → senkrechte Wände bei tiefen Einschnitten.
+- NICHT den Böschungskegel mit konstanter Neigung ins Unendliche laufen lassen, sondern die Neigung mit dem Abstand bis `SLOPE_MAX` steigern (`BANK_CURVE`). Sonst kappt er Gipfel und Seen 100 m neben der Straße, bei flachem `roadSlope` die halbe Karte.
+- NICHT Winkel ± Variation hinterher klemmen, sondern die Variation auf den Abstand zur Grenze begrenzen. Sonst klebt der Winkel an 10° bzw. 60° und der Regler wirkt an den Enden nicht.
 
 ## Layout-Regeln (uniform)
 1. Array-Element-Stride = Vielfaches von 16 B.
