@@ -25,6 +25,7 @@ struct Params {
     roadHalfWidth: f32,
     roadSlope: f32,
     roadOffset: f32, // nur Layout-Platzhalter: Offset steckt schon im Level (roads[].z)
+    passWidth: f32,
 };
 
 // 8 Straßen × 32 Punkte, feste Größe. Punkt = vec4(x, y, level m, 0)
@@ -114,14 +115,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let band = max(u.params.cliffWidth * u.params.cliffScale, 0.02);
     h += cMask * (smoothstep(0.5 - band, 0.5 + band, cn) * 2.0 - 1.0) * u.params.cliffDrop * 0.5;
 
-    // 4) Rand-Ring: Anhöhe Richtung Map-Kante
-    let edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * u.params.mapSize;
-    let rimF = 1.0 - smoothstep(0.0, u.params.rimZone, edge);
-    h += rimF * (0.6 + 0.4 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp;
-
-    // 5) Straßen: stärkstes Segment bestimmt Gewicht + Level (linear zwischen den Endpunkten) — gewinnt über allem
-    var roadF = 0.0;
+    // 4) Straßen: nächstes Segment liefert Distanz + Level (linear zwischen den Endpunkten) (→ .clinerules/wgsl.md)
     var roadL = 0.0;
+    var dMin = 1e9;
     let nRoads = min(u32(u.params.roadCount), 8u);
     for (var r = 0u; r < nRoads; r = r + 1u) {
         let base = r * 32u;
@@ -129,15 +125,26 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let a = u.roads[base + s];
             let b = u.roads[base + s + 1u];
             let dt = distPointSeg(w, a.xy, b.xy);
-            let f = 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + u.params.roadSlope, dt.x);
-            if (f > roadF) {
-                roadF = f;
+            if (dt.x < dMin) {
+                dMin = dt.x;
                 roadL = mix(a.z, b.z, dt.y);
             }
         }
     }
-    h = mix(h, roadL, roadF);
+
+    // 5) Rand-Ring: Anhöhe Richtung Map-Kante, an Straßen zum Pass abgesenkt (Prepass ohne Ring → Level passt)
+    let edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * u.params.mapSize;
+    let rimF = (1.0 - smoothstep(0.0, u.params.rimZone, edge)) * smoothstep(u.params.roadHalfWidth, u.params.passWidth, dMin);
+    h += rimF * (0.6 + 0.4 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp;
+
+    // 6) Straßen — gewinnt über allem: Fahrbahn = Level, daneben Böschung mit fester Neigung
+    // (Gelände in einen Kegel um das Level geklemmt → tiefer Einschnitt = breitere Böschung, keine Wand)
+    // vereinfacht: nur die nächste Straße klemmt – Kreuzungen mit abweichendem Level knicken an der Mittellinie
+    if (nRoads > 0u) {
+        let e = max(dMin - u.params.roadHalfWidth, 0.0) * u.params.roadSlope;
+        h = clamp(h, roadL - e, roadL + e);
+    }
 
     heights[idx] = clamp(h / u.params.maxH, 0.0, 1.0);
-    roadMask[idx] = roadF;
+    roadMask[idx] = 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + 1.0, dMin); // nur Fahrbahn (Farbe)
 }

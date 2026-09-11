@@ -61,13 +61,15 @@ const params = {
     maxH: 0, // automatisch (autoMaxH) in generate()
     waterLevel: 15,
     roadCount: 4,
-    roadWidth: 10,
-    roadSlope: 5,
+    roadWidth: 4,
+    roadSlope: 35, // Böschungswinkel in °
     roadLevel: 26,
     roadOffset: 2,
     levelSmoothing: 5,
     slopePenalty: 1.5,
     waterAvoid: 2,
+    passWidth: 40,
+    rimAvoid: 2,
 };
 
 const uniformsData = new Float32Array(ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS);
@@ -125,8 +127,9 @@ async function generate() {
     const t0 = performance.now();
     params.maxH = autoMaxH(params);
 
-    // Prepass: 128² Roh-Terrain (ohne Straßen) → Routing-Daten für roadgen (→ Plan/Roads.md)
-    encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0 },
+    // Prepass: 128² Roh-Terrain (ohne Straßen, ohne Rand-Ring → Pässe) → Routing-Daten für roadgen
+    // (→ Plan/TerrainStrassennetz.md T2); maxH bleibt das des Final-Pass
+    encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0, rimAmp: 0 },
         new Float32Array(MAX_ROADS * ROAD_POINTS * 2), new Float32Array(MAX_ROADS * ROAD_POINTS), uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     const preEnc = device.createCommandEncoder();
@@ -139,7 +142,7 @@ async function generate() {
     const pre = await readBuffer(heightBuf, PRE * PRE * 4);
     for (let i = 0; i < pre.length; i++) terrain128[i] = pre[i] * params.maxH;
 
-    // Prepass-Konsole-Check (→ Plan/Roads.md S1): Min/Max ≈ Final-Pass
+    // Prepass-Konsole-Check (→ Plan/Roads.md S1): Min/Max ≈ Final-Pass ohne Rand-Ring
     let pMn = Infinity, pMx = -Infinity;
     for (const h of terrain128) {
         if (h < pMn) pMn = h;
@@ -375,8 +378,8 @@ addNum(fCliff, 'cliffAreaWave', 40, 400, 5);
 addNum(fCliff, 'cliffCoverage', 0, 100, 1);
 const fRoad = gui.addFolder('Straßen');
 addNum(fRoad, 'roadCount', 0, MAX_ROADS, 1);
-addNum(fRoad, 'roadWidth', 2, 40, 0.5);
-addNum(fRoad, 'roadSlope', 1, 30, 0.5);
+addNum(fRoad, 'roadWidth', 1, 5, 0.5);
+addNum(fRoad, 'roadSlope', 15, 60, 1);
 addNum(fRoad, 'roadLevel', 0, 60, 0.5);
 const fRim = gui.addFolder('Rand-Ring');
 addNum(fRim, 'rimAmp', 0, 100, 1);

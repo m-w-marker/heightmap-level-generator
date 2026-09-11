@@ -114,7 +114,8 @@ function edgePoint(edge, t, mapSize) {
     return [0, t * mapSize];
 }
 
-// Dijkstra 8-Nachbarn; Kantenkosten = length + slopePenalty·|Δh| (+ waterAvoid·length unter waterLevel).
+// Dijkstra 8-Nachbarn; Kantenkosten = length + slopePenalty·|Δh| (+ waterAvoid·length unter waterLevel)
+// (+ rimAvoid·length·Ring-Gewicht: Prepass hat keinen Ring, Straßen dort werden zu Pässen → nur queren).
 // Feste Nachbar-Reihenfolge + striktes < → deterministisch (→ Plan/Roads.md „Routing“)
 function dijkstra(terrain, mapSize, start, goal, opts) {
     const N = terrain.size, h = terrain.data, cs = mapSize / N, nN = N * N;
@@ -168,6 +169,12 @@ function dijkstra(terrain, mapSize, start, goal, opts) {
         }
         return top;
     }
+    // Ring-Gewicht wie rimF in heightmap.wgsl: 1 an der Kante → 0 bei rimZone
+    function rimWeight(x, y) {
+        const e = Math.min(x + 0.5, y + 0.5, N - 0.5 - x, N - 0.5 - y) * cs;
+        const t = Math.min(e / opts.rimZone, 1);
+        return 1 - t * t * (3 - 2 * t);
+    }
     const NB = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
     dist[start] = 0;
     pushOrDec(start, 0);
@@ -183,6 +190,7 @@ function dijkstra(terrain, mapSize, start, goal, opts) {
             const len = Math.hypot(NB[k][0], NB[k][1]) * cs;
             let c = len + opts.slopePenalty * Math.abs(h[v] - h[u]);
             if (h[u] < opts.waterLevel || h[v] < opts.waterLevel) c += opts.waterAvoid * len;
+            if (opts.rimAmp > 0) c += opts.rimAvoid * len * rimWeight(x, y);
             const nd = du + c;
             if (nd < dist[v]) {
                 dist[v] = nd;

@@ -73,6 +73,21 @@ for (const count of [4, 8]) {
     }
 }
 
+// Rand-Ring (→ Plan/TerrainStrassennetz.md T2): mit rimAvoid weniger Straßenpunkte in der Randzone (nur queren)
+{
+    const rimZone = 45;
+    const inRim = o => {
+        const { points } = generateRoads(seed, mapSize, MAX_ROADS, flatTerrain(), o);
+        let k = 0;
+        for (let i = 0; i < points.length; i += 2)
+            if (Math.min(points[i], points[i + 1], mapSize - points[i], mapSize - points[i + 1]) < rimZone) k++;
+        return k;
+    };
+    const off = inRim({ ...opts, rimAmp: 40, rimZone, rimAvoid: 0 });
+    const on = inRim({ ...opts, rimAmp: 40, rimZone, rimAvoid: 2 });
+    check(on < off, `rimAvoid: ${on} statt ${off} Punkte in der Randzone`);
+}
+
 // Laufzeit: kaputter Heap fällt nicht funktional auf, sondern als Sekunden pro Straße (Budget < 500 ms)
 {
     const bump = bumpTerrain();

@@ -32,8 +32,11 @@ Pässen im Rand-Ring. Löst `Plan/Roads.md` S4 ab.
 - **Pässe im Rand-Ring:** Prepass ohne Rand-Ring (`rimAmp = 0`) → Routing und Levels sehen das innere
   Gelände; im Final-Pass wird `rimF` nahe Straßen abgesenkt (`smoothstep(roadHalfWidth, passWidth,
   dMin)`), Innen-Straßen meiden die Randzone über Kosten `rimAvoid` (Ausfahrten queren sie kurz).
-- **Straßenfarbe nur Fahrbahn:** `roadMask` = Fahrbahn (1 m weiche Kante), Flattening-Gewicht `roadF`
-  bleibt inkl. Böschung.
+- **Straßenfarbe nur Fahrbahn:** `roadMask` = Fahrbahn (1 m weiche Kante).
+- **Böschung als Neigung (T2, nach Screenshot):** `roadSlope` = Böschungswinkel in ° (15–60, Default 35);
+  Gelände wird in den Kegel `roadL ± tan(α)·(d − hw)` geklemmt statt `mix` über feste 5-m-Breite
+  (→ Wände bei tiefen Einschnitten). Level vom nächsten Segment statt „stärkstes Gewicht“ (→ Treppen).
+  `roadWidth` 1–5 m, Default 4 (400-m-Map).
 - **Netz statt Einzelstraßen:**
   - Knoten: `townCount` Orte im Inneren (geseedete Kandidaten, Score = flach + trocken + außerhalb
     Randzone, gierig mit Mindestabstand `townSpacing`) + `exitCount` Randausfahrten.
@@ -45,6 +48,9 @@ Pässen im Rand-Ring. Löst `Plan/Roads.md` S4 ab.
   - vereinfacht: überlappende Abschnitte bleiben doppelte Geometrie (Shader nimmt max) – ab Bedarf an
     Kreuzungs-Daten (z. B. Export als Graph).
   - `MAX_ROADS` 8 → 16 (Netz-Kanten > 8); Shader-Loop wächst mit, Budget Regeneration < 500 ms.
+  - Glatter Verlauf: 8-Nachbar-Gitter = 45°-Zickzack → mehr Chaikin-Iterationen; Punkte je Straße
+    nach Länge statt fix 32 über 400 m (13-m-Segmente = sichtbare Knicke). `slopePenalty`-Default
+    höher (1.5 = 60 m Anstieg kostet nur 90 m Umweg → Straßen gehen über Berge statt drumherum).
 - **Scope-Ausschlüsse:** keine Brücken/Tunnel, keine Straßenklassen, kein Graph-Export.
 
 ## Meilensteine (jede Stufe lauffähig, bevor die nächste beginnt)
@@ -76,7 +82,7 @@ Pässen im Rand-Ring. Löst `Plan/Roads.md` S4 ab.
 
 ## Abgeschlossen
 - [x] T1 Terrain-Kalibrierung — geprüft am 2026-09-11
-- [ ] T2 Pässe + Straßenfarbe — geprüft am YYYY-MM-DD
+- [x] T2 Pässe + Straßenfarbe + Böschung als Neigung — geprüft am 2026-09-11 (check grün; Browser gesammelt am Ende)
 - [ ] N1 Knoten + Kanten — geprüft am YYYY-MM-DD
 - [ ] N2 Netz-Routing + Levels — geprüft am YYYY-MM-DD
 - [ ] N3 GUI + Doku — geprüft am YYYY-MM-DD

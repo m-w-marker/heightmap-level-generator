@@ -52,8 +52,9 @@ export const PARAM_FIELDS = {
     rimScale: p => 1 / p.rimWave,
     roadCount: p => p.roadCount,
     roadHalfWidth: p => p.roadWidth / 2,
-    roadSlope: p => p.roadSlope,
+    roadSlope: p => Math.tan(p.roadSlope * Math.PI / 180), // Böschungswinkel ° → Höhe pro m
     roadOffset: p => p.roadOffset,
+    passWidth: p => Math.max(p.passWidth, p.roadWidth / 2 + 1), // smoothstep braucht edge0 < edge1
 };
 
 // Float-Index von roads: Params-Felder auf die 16-Byte-Align des vec4-Arrays aufgefüllt
