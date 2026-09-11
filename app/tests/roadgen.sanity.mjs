@@ -73,8 +73,20 @@ for (const count of [4, 8]) {
     }
 }
 
+// Laufzeit: kaputter Heap fällt nicht funktional auf, sondern als Sekunden pro Straße (Budget < 500 ms)
+{
+    const bump = bumpTerrain();
+    let worst = 0;
+    for (let s = 1000; s < 1020; s++) {
+        const t = performance.now();
+        generateRoads(s, mapSize, MAX_ROADS, bump, opts);
+        worst = Math.max(worst, performance.now() - t);
+    }
+    check(worst < 200, `generateRoads ${MAX_ROADS} Straßen: max ${worst.toFixed(0)} ms < 200 ms`);
+}
+
 if (fail) {
     console.error(`${fail} Checks fehlgeschlagen`);
     process.exit(1);
 }
-console.log('roadgen-Sanity: OK — Edge-to-Edge, in Map-Grenzen, deterministisch, Hügel-Umgehung, Level = Terrain + Offset');
+console.log('roadgen-Sanity: OK — Edge-to-Edge, in Map-Grenzen, deterministisch, Hügel-Umgehung, Level = Terrain + Offset, Laufzeit');

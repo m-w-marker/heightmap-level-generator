@@ -82,7 +82,7 @@ export function generateRoads(seed, mapSize, count, terrain, opts) {
         // Ziel auf gegenüberliegender (50 %) oder benachbarter Kante
         const edge = Math.floor(rand() * 4);
         const [sx, sy] = edgePoint(edge, 0.02 + 0.96 * rand(), mapSize);
-        const tEdge = rand() < 0.5 ? edge ^ 2 : (edge + 1 + Math.floor(rand() * 2)) % 4;
+        const tEdge = rand() < 0.5 ? edge ^ 2 : (edge + 1 + 2 * Math.floor(rand() * 2)) % 4;
         const [tx, ty] = edgePoint(tEdge, 0.02 + 0.96 * rand(), mapSize);
 
         const path = dijkstra(terrain, mapSize, cellX(sx) + cellX(sy) * N, cellX(tx) + cellX(ty) * N, opts);
@@ -120,41 +120,57 @@ function dijkstra(terrain, mapSize, start, goal, opts) {
     const N = terrain.size, h = terrain.data, cs = mapSize / N, nN = N * N;
     const dist = new Float64Array(nN).fill(Infinity);
     const prev = new Int32Array(nN).fill(-1);
-    // Binärer Min-Heap (parallel node/key)
+    // Min-Heap mit decrease-key (pos): jeder Knoten max. 1× im Heap → Größe ≤ nN (Arrays fix nN)
     const heapN = new Int32Array(nN);
     const heapK = new Float64Array(nN);
+    const pos = new Int32Array(nN).fill(-1);
     let hs = 0;
-    function push(node, key) {
-        let i = hs++;
+    function siftUp(i) {
+        const node = heapN[i], key = heapK[i];
         while (i > 0) {
             const p = (i - 1) >> 1;
             if (heapK[p] <= key) break;
             heapK[i] = heapK[p]; heapN[i] = heapN[p];
+            pos[heapN[i]] = i;
             i = p;
         }
         heapK[i] = key; heapN[i] = node;
+        pos[node] = i;
+    }
+    function pushOrDec(node, key) {
+        const p = pos[node];
+        if (p >= 0) {
+            if (key < heapK[p]) { heapK[p] = key; siftUp(p); }
+            return;
+        }
+        heapN[hs] = node; heapK[hs] = key; pos[node] = hs;
+        siftUp(hs++);
     }
     function pop() {
         const top = heapN[0];
+        pos[top] = -1;
         const node = heapN[--hs], key = heapK[hs];
         if (hs > 0) {
             let i = 0;
             for (;;) {
                 const l = 2 * i + 1, r = l + 1;
-                let m = i;
-                if (l < hs && heapK[l] < heapK[m]) m = l;
-                if (r < hs && heapK[r] < heapK[m]) m = r;
+                // gegen key des nachgerückten Knotens vergleichen, nicht heapK[i] (= alte Wurzel)
+                let m = i, mk = key;
+                if (l < hs && heapK[l] < mk) { m = l; mk = heapK[l]; }
+                if (r < hs && heapK[r] < mk) m = r;
                 if (m === i) break;
                 heapK[i] = heapK[m]; heapN[i] = heapN[m];
+                pos[heapN[i]] = i;
                 i = m;
             }
             heapK[i] = key; heapN[i] = node;
+            pos[node] = i;
         }
         return top;
     }
     const NB = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
     dist[start] = 0;
-    push(start, 0);
+    pushOrDec(start, 0);
     while (hs > 0) {
         const u = pop();
         const du = dist[u];
@@ -171,7 +187,7 @@ function dijkstra(terrain, mapSize, start, goal, opts) {
             if (nd < dist[v]) {
                 dist[v] = nd;
                 prev[v] = u;
-                push(v, nd);
+                pushOrDec(v, nd);
             }
         }
     }

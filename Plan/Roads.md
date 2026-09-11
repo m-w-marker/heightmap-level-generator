@@ -78,7 +78,7 @@ Readback → 2D-Preview + 3D-Mesh (wie bisher).
 
 ## Abgeschlossen
 - [x] S1 Prepass 128² — geprüft am 2026-09-11
-- [ ] S2 roadgen.js: Dijkstra + Level — geprüft am YYYY-MM-DD
+- [x] S2 roadgen.js: Dijkstra + Level — geprüft am 2026-09-11
 - [ ] S3 WGSL + Uniforms: following Level — geprüft am YYYY-MM-DD
 - [ ] S4 GUI + Doku — geprüft am YYYY-MM-DD
 
