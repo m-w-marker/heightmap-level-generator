@@ -31,6 +31,7 @@ Pass hindurchzuführen. Dazu ein Reset auf Standardwerte und Presets für typisc
 
 ## Abgeschlossen
 - [x] A1 Ausfahrten am Ringfuß — geprüft am 2026-09-11 (check grün; Browser gesammelt am Ende)
-- [ ] A2 Reset + Presets — geprüft am YYYY-MM-DD
+- [x] A2 Reset + Presets — geprüft am 2026-09-11 (check grün)
+- [ ] Browser-Abnahme A1 + A2 (Ring geschlossen, Presets sehen nach ihrem Namen aus) → dann nach erledigt/
 
 <!-- fertig: git mv Plan/PresetsAusfahrten.md Plan/erledigt/ -->

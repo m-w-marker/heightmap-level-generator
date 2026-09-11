@@ -363,6 +363,30 @@ function addNum(folder, key, min, max, step) {
 
 const gui = new GUI({ title: 'Terrain' });
 gui.add(params, 'seed').min(1).max(99999).step(1).name('Seed').onChange(scheduleGenerate);
+
+// Presets = Standardwerte (gui.reset(), inkl. Seed) + Overrides (→ Plan/PresetsAusfahrten.md).
+// Buttons statt Dropdown: ein Dropdown würde von gui.reset() mitgesetzt → onChange-Schleife.
+const PRESETS = {
+    'Hügelland': { hillAmp: 12, hillWave: 100, mountainAmp: 25, mountainCoverage: 20, cliffDrop: 8, cliffCoverage: 5,
+        townCount: 7, townSpacing: 60, extraLinks: 3 },
+    'Weidefläche': { hillAmp: 4, hillWave: 160, mountainAmp: 0, mountainCoverage: 0, cliffDrop: 0, cliffCoverage: 0,
+        townCount: 4, townSpacing: 90, extraLinks: 1 },
+    'Gebirge': { baseLevel: 25, hillAmp: 10, mountainAmp: 110, mountainWave: 150, clusterWave: 180, mountainCoverage: 60,
+        cliffDrop: 25, cliffCoverage: 20, rimAmp: 60, townCount: 4, townSpacing: 70, slopePenalty: 6, extraLinks: 1 },
+    'Canyon / Plateaus': { hillAmp: 3, mountainAmp: 20, mountainCoverage: 10, cliffDrop: 45, cliffWave: 110, cliffWidth: 6,
+        cliffAreaWave: 200, cliffCoverage: 70, townCount: 5, slopePenalty: 6 },
+    'Seenplatte': { baseLevel: 18.5, hillAmp: 6, hillWave: 90, mountainAmp: 15, mountainCoverage: 10, cliffDrop: 6,
+        cliffCoverage: 5, waterLevel: 16, townCount: 5, waterAvoid: 4 },
+};
+function applyPreset(overrides) {
+    gui.reset();
+    Object.assign(params, overrides);
+    gui.controllersRecursive().forEach(c => c.updateDisplay());
+    scheduleGenerate();
+}
+const fPreset = gui.addFolder('Presets');
+fPreset.add({ reset: () => applyPreset({}) }, 'reset').name('Standardwerte');
+for (const [name, p] of Object.entries(PRESETS)) fPreset.add({ apply: () => applyPreset(p) }, 'apply').name(name);
 addNum(gui.addFolder('Basis'), 'baseLevel', 0, 60, 0.5);
 const fHuegel = gui.addFolder('Hügel');
 addNum(fHuegel, 'hillAmp', 0, 30, 0.5);
