@@ -410,7 +410,7 @@ const PRESETS = {
         townCount: 6, townSpacing: 70, extraLinks: 3, roadSlopeVar: 15 },
     'Pasture': { baseLevel: 25, hillAmp: 4, hillWave: 100, hillRoughness: 0.3, mountainAmp: 0, mountainCoverage: 0,
         cliffDrop: 0, cliffCoverage: 0, rimAmp: 25, rimZone: 70, rimWave: 120, townCount: 4, townSpacing: 90, extraLinks: 1 },
-    'Mountains': { baseLevel: 25, hillAmp: 12, hillRoughness: 0.6, mountainAmp: 120, mountainWave: 200, clusterWave: 260,
+    'Mountains': { baseLevel: 25, hillAmp: 12, hillRoughness: 0.6, mountainAmp: 100, mountainWave: 200, clusterWave: 260,
         mountainCoverage: 45, cliffDrop: 15, cliffCoverage: 15, rimAmp: 70, rimZone: 60,
         townCount: 4, townSpacing: 60, slopePenalty: 7, extraLinks: 1 },
     'Canyon / Plateaus': { baseLevel: 45, hillAmp: 3, hillRoughness: 0.35, mountainAmp: 0, mountainCoverage: 0,

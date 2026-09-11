@@ -57,7 +57,7 @@ const base = {
     mountainCoverage: 30, cliffDrop: 20, cliffWave: 90, cliffWidth: 15, cliffAreaWave: 160, cliffCoverage: 30,
     rimAmp: 40, rimZone: 45, rimWave: 90,
 };
-const extreme = { ...base, baseLevel: 60, hillAmp: 30, hillRoughness: 0.65, mountainAmp: 150, mountainCoverage: 100, cliffDrop: 60, cliffCoverage: 100, rimAmp: 100, rimZone: 150 };
+const extreme = { ...base, baseLevel: 60, hillAmp: 30, hillRoughness: 0.65, mountainAmp: 100, mountainCoverage: 100, cliffDrop: 60, cliffCoverage: 100, rimAmp: 100, rimZone: 150 };
 for (const [name, p] of [['Default', base], ['Extrem', extreme]]) {
     const mx = maxHeight(p), lim = autoMaxH(p);
     check(mx <= lim, `${name}: max Höhe ${mx.toFixed(1)} m ≤ maxH ${lim.toFixed(1)} m (kein Clamp oben)`);

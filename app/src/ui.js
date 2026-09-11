@@ -10,7 +10,7 @@ export const TABS = {
             ['hillWave', 'Size (m)', 20, 400, 5, 'Distance between hill tops.'],
         ],
         Mountains: [
-            ['mountainAmp', 'Height (m)', 0, 150, 5, 'Typical peak height on top of the hills.'],
+            ['mountainAmp', 'Height (m)', 0, 100, 5, 'Typical peak height on top of the hills.'],
             ['mountainCoverage', 'Coverage (%)', 0, 100, 1, 'Share of the map covered by mountain groups.'],
         ],
         Cliffs: [
