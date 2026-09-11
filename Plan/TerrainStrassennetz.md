@@ -87,6 +87,7 @@ Pässen im Rand-Ring. Löst `Plan/Roads.md` S4 ab.
 - [x] N2 Netz-Routing + Levels — geprüft am 2026-09-11 (check grün; Parallelband-Test zählt nur
   gleichbleibenden Abstand – Y-Einmündungen verjüngen sich; Glättung: 16 Nachbarn + gleitender
   Mittelwert statt Punkte je Länge; Browser gesammelt am Ende)
-- [ ] N3 GUI + Doku — geprüft am YYYY-MM-DD
+- [x] N3 GUI + Doku — geprüft am 2026-09-11 (`rimAvoid` zusätzlich in „Rand-Ring“)
+- [ ] Browser-Abnahme T2–N3 (Pässe, Böschung, Netz, Regeneration < 500 ms) → dann Plan nach erledigt/
 
 <!-- fertig: git mv Plan/TerrainStrassennetz.md Plan/erledigt/ -->

@@ -14,13 +14,14 @@ Straßen, Abrisskanten, Hügel, Berge, Rand-Ring. Live-Tuning per GUI, Seed-basi
 `npm run dev` (→ localhost:5173) · `npm run build` · `npm run sanity` · `npm run check` (alles, sobald vorhanden)
 
 ## Datenfluss
-Seed + Params → `roadgen.js` (CPU-Polylines) → Uniform-Buffer → `heightmap.wgsl` (Compute 16×16)
+Seed + Params → Prepass 128² (ohne Straßen/Rand-Ring) → `roadgen.js` (Orte + Netz, Dijkstra → Polylines
++ Levels) → Uniform-Buffer → `heightmap.wgsl` (Compute 16×16)
 → Storage `heights` + `roadMask` → Readback → 2D-Preview (Canvas 1024²) + 3D-Mesh (512², `computeVertexNormals`)
 
 ## Konventionen
-- 1 Unit = 1 m. Höhen im Buffer normalisiert 0–1 (× `maxH`). Wasser-Spiegel 15 m.
-- Terrain-Parameter in Metern, nicht in UV.
-- Straßen: Flattening auf `roadLevel`, gewinnt über allem.
+- 1 Unit = 1 m. Höhen im Buffer normalisiert 0–1 (× `maxH`, automatisch = obere Schranke → kein Clamp oben). Wasser-Spiegel 15 m.
+- Terrain-Parameter in Metern (Amplitude = p95) bzw. Abdeckung in % der Map, nicht in UV oder Noise-Einheiten.
+- Straßen: Fahrbahn auf terrain-folgendem Level (geglättetes Feld + `roadOffset`), Böschung mit fester Neigung; gewinnt über allem.
 - 3D-Geometrie CPU-seitig aus der Heightmap (nicht `displacementMap`) → korrekte Normals.
 
 ## Pitfalls (three r186 / WebGPU)

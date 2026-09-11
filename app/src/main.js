@@ -60,10 +60,8 @@ const params = {
     rimWave: 90,
     maxH: 0, // automatisch (autoMaxH) in generate()
     waterLevel: 15,
-    roadCount: 4,
     roadWidth: 4,
     roadSlope: 35, // Böschungswinkel in °
-    roadLevel: 26,
     roadOffset: 2,
     levelSmoothing: 12, // m Radius des Level-Felds
     slopePenalty: 4,
@@ -383,14 +381,24 @@ addNum(fCliff, 'cliffWidth', 2, 60, 0.5);
 addNum(fCliff, 'cliffAreaWave', 40, 400, 5);
 addNum(fCliff, 'cliffCoverage', 0, 100, 1);
 const fRoad = gui.addFolder('Straßen');
-addNum(fRoad, 'roadCount', 0, MAX_ROADS, 1);
+// Maxima so, dass MST + Zusatz + Ausfahrten ≤ MAX_ROADS: (8 − 1) + 4 + 4 = 15
+addNum(fRoad, 'townCount', 1, 8, 1);
+addNum(fRoad, 'townSpacing', 30, 150, 5);
+addNum(fRoad, 'exitCount', 0, 4, 1);
+addNum(fRoad, 'extraLinks', 0, 4, 1);
 addNum(fRoad, 'roadWidth', 1, 5, 0.5);
 addNum(fRoad, 'roadSlope', 15, 60, 1);
-addNum(fRoad, 'roadLevel', 0, 60, 0.5);
+addNum(fRoad, 'roadOffset', 0, 5, 0.1);
+addNum(fRoad, 'levelSmoothing', 0, 40, 1);
+addNum(fRoad, 'slopePenalty', 0, 10, 0.5);
+addNum(fRoad, 'waterAvoid', 0, 5, 0.5);
+addNum(fRoad, 'reuse', 0.1, 1, 0.05);
 const fRim = gui.addFolder('Rand-Ring');
 addNum(fRim, 'rimAmp', 0, 100, 1);
 addNum(fRim, 'rimZone', 10, 150, 5);
 addNum(fRim, 'rimWave', 20, 300, 5);
+addNum(fRim, 'passWidth', 10, 80, 1);
+addNum(fRim, 'rimAvoid', 0, 5, 0.5);
 const fGlobal = gui.addFolder('Global');
 fGlobal.add(params, 'maxH').name('maxH (auto)').disable().listen();
 addNum(fGlobal, 'waterLevel', 0, 50, 0.5);
