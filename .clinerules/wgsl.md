@@ -2,7 +2,6 @@
 paths:
   - "app/src/heightmap.wgsl"
   - "app/src/uniforms.js"
-  - "app/src/main.js"
   - "app/tests/**"
 ---
 # Thema: WGSL-Compute & Uniform-Layout
@@ -18,7 +17,7 @@ paths:
 2. Offset von Mitglied i+1 = `roundUp(Ende von i, Align(i+1))`.
 3. Nach einem Struct-Mitglied S liegt das nächste bei `≥ roundUp(16, Größe(S))`. naga rundet hier nicht auf, sondern meldet einen Fehler.
 
-Aktuell: `Params` = 21 × f32 = 84 B → `roads` ab Byte 96 = Float-Index 24.
+Aktuell: `Params` = 21 × f32 = 84 B → `roads` ab Byte 96 = Float-Index 24; `roads` = `MAX_ROADS × ROAD_POINTS` vec4, Layout-Test `tests/uniforms.layout.mjs`.
 
 ## Symptome
 Readback nur Nullen oder „Road-Level Infinity“ → Shader-Modul abgelehnt (Browser-Konsole) oder Params-Reihenfolge JS ≠ WGSL

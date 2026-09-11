@@ -1,6 +1,6 @@
 // Seed-basierte Straßen-Polylines auf der CPU (→ Plan/Build.md M3)
 // Random Walk von der Map-Kante → äquidistant auf 32 Punkte resampled.
-// Feste Größe 8×32 — WGSL hardcodiert array<vec2, 256> und die Loop.
+// Feste Größe 8×32 — WGSL hardcodiert array<vec4, 256> und die Loop.
 
 export const MAX_ROADS = 8;
 export const ROAD_POINTS = 32;

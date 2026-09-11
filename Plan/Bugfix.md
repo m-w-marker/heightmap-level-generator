@@ -122,6 +122,6 @@ Kein neues Feature, kein M4-Vorgriff.
 - [x] 2 `uniforms.js` + Layout-Test (rot bei Array-Größe) — geprüft am 2026-09-10
 - [x] 3 Road-Array 256 + roadCount-Grenze — geprüft am 2026-09-10
 - [x] 4 Fehlerausgabe WGSL/WebGPU — geprüft am 2026-09-10
-- [ ] 5 Doku-Drift — geprüft am YYYY-MM-DD
+- [x] 5 Doku-Drift — geprüft am 2026-09-10
 
 <!-- fertig: git mv Plan/Bugfix.md Plan/erledigt/ -->

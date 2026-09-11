@@ -26,7 +26,7 @@ struct Params {
 };
 
 // 8 Straßen × 32 Punkte, feste Größe.
-// vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ Plan/Build.md M3)
+// vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
 struct Uniforms {
     params: Params,
     roads: array<vec4<f32>, 256>,

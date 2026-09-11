@@ -1,7 +1,7 @@
 # Build-Plan: WebGPU Heightmap Generator
 
 **Status:** offen
-**Datum:** 2026-07-10
+**Datum:** 2026-09-10
 
 ## Ziel
 Prozeduraler Heightmap-Generator auf WebGPU-Compute: 1024×1024 f32-Heightmap für eine
@@ -22,7 +22,7 @@ Live-tunerbar (GUI), Seed-basiert regenerierbar (< 500 ms), Heightmap als 2D-Pre
 ## Datenfluss
 Seed + Parameter (GUI) → CPU `roadgen.js`: Straßen-Polyline (mulberry32-Seed, Random Walk,
 äquidistant auf 32 Punkte resampled, max. 8 Straßen)
-→ Uniform-Buffer (Params + Road-Punkte 8×32×vec2)
+→ Uniform-Buffer (Params + Road-Punkte 8×32×vec4)
 → WGSL-Compute (1024×1024, Workgroup 16×16) → Storage-Buffer `heights` (0–1) + `roadMask` (0–1)
 → Readback (Staging MAP_READ, 8 MB)
 → 2D-Preview (DOM-Canvas 1024², Farbcodierung: Wasser/Sand/Gras/Fels/Schnee/Straße)
@@ -48,14 +48,7 @@ Noise in WGSL selbst: Hash (sin), 2D-Value-Noise (cubic), fBm (5 Oktaven), Ridge
    Prüfung: Konsole-Stats (Min/Max/Ø/Wasser %) plausibel; Preview zeigt alle Layer; `npm run build` fehlerfrei
 3. **M3 Straßen**: `roadgen.js` (Seed-Polyline), Road-Uniform, Flattening + roadMask →
    Prüfung: Node-Sanity von roadgen (32 Punkte/Straße, in Map-Grenzen); Road-Level im Readback konstant (±0.5 m); Straßen sichtbar in Preview
-   - Befund 2026-07-10 (Firefox): Validierer lehnte das Shader-Modul ab → Compute lief nie,
-     Readback all zeros (100 % Wasser, Road-Level Infinity). Ursachen:
-     (1) `array<vec2<f32>>` im uniform-Adressraum ungültig (Element-Stride 8 kein Vielfaches von 16) → `array<vec4<f32>, 128>` (x, z, 0, 0);
-     (2) `roads` lag dadurch bei Byte 88 statt ≥ 96 (Strukt-Mitglied → Offset ≥ roundUp(16, Span)) → vec4-Align + 2 Padding-floats in `Params`;
-     (3) JS-Encoding stand nicht 1:1 zur WGSL-Feldreihenfolge (M3 tauschte `cliffWidth`/`cliffMaskScale` + `cliffAreaScale` dazwischen, dann wieder entfernt) → `roadCount` wurde als 0.011 gelesen = 0 Straßen; JS schreibt jetzt exakt die 21 Felder, roads ab Float 24 (Byte 96).
-     WGSL mit naga 30 validiert (`C:\naga-proj\target\debug\naga-runner.exe app\src\heightmap.wgsl` → OK).
-     roadgen-Sanity: OK (`npm run sanity`). Ergebnis im Firefox: OK — Road-Level 26.0–26,1 m
-      (Ziel 26 ± 0,5), Straßen sichtbar. **M3 abgeschlossen.**
+   - Befund + Lösung → .clinerules/wgsl.md
 4. **M4 3D-Terrain**: `BufferGeometry` 512² + Normals + vertexColors →
    Prüfung: Mesh folgt Heightmap, korrekt gelichtet, OrbitControls flüssig
 5. **M5 GUI + Export**: lil-gui (alle Parameter + Seed, debounced Regenerieren), PNG-Export (Graustufen) →
@@ -69,4 +62,4 @@ Noise in WGSL selbst: Hash (sin), 2D-Value-Noise (cubic), fBm (5 Oktaven), Ridge
 - Kein TAAU (MSAA reicht für die Preview-Qualität)
 
 ## Abgeschlossen
-M1, M2, M3 (2026-07-10), M4 (2026-09-10)
+M1, M2, M3 (2026-09-10), M4 (2026-09-10)
