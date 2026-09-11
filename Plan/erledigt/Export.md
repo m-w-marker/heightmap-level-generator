@@ -1,6 +1,6 @@
 # Plan: 16-Bit-Heightmap, Metadaten, Splatmap
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -27,6 +27,7 @@ zum Texturieren. Ziel ist die eigene WebGPU-Engine, aber engine-neutral.
 ## Abgeschlossen
 - [x] E1 PNG-Encoder + 16-Bit + JSON — geprüft am 2026-09-11 (Node-Test bit-genau; headless Mountains:
   16 Bit = 8 Bit ± 0 Stufen, 4370 verschiedene Werte in 5000 Stichproben; maxH 275 m → 8-Bit-Stufe wäre 1,1 m)
-- [ ] E2 Splatmap — geprüft am
+- [x] E2 Splatmap — geprüft am 2026-09-11 (headless Lakes/Canyon/Favorite: alle Pixel Summe 255 — erst nach Fix
+  „(1 − wet)“, vorher 93 Pixel mit Überlauf am Ufer; Anteile plausibel: Lakes Wasser 36 %, Canyon Fels 11 %)
 
 <!-- fertig: git mv Plan/Export.md Plan/erledigt/ -->

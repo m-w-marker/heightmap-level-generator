@@ -27,7 +27,9 @@ tweak everything live and export the result as PNG.
 - **Road color** — adjustable, recolors without regenerating
 - **Water level** — adjustable, shown in the preview
 - **2D map + 3D preview** — top-down heightmap and a lit 3D mesh (three.js)
-- **PNG export** — grayscale heightmap (8-bit, 1024×1024)
+- **Export** — 16-bit grayscale heightmap PNG (1024×1024, ~2 mm steps instead of ~0.5 m in 8-bit), RGBA splatmap
+  for texturing (R road · G rock · B water/shore · A grass, weights sum to 255), metadata JSON (map size, `maxH`,
+  pixel convention, all settings), plus an 8-bit preview PNG
 
 ## Quick start
 

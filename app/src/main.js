@@ -255,6 +255,11 @@ function setRoadColor() {
 }
 setRoadColor();
 
+// Fels-Anteil nach Hangneigung — geteilt von Farbrampe und Splatmap
+const rockWeight = s => Math.min(Math.max((s - ROCK_SLOPE[0]) / (ROCK_SLOPE[1] - ROCK_SLOPE[0]), 0), 1);
+// Fahrbahn-Anteil aus roadMask (weiche Kante) — geteilt von Farbrampe und Splatmap
+const roadWeight = m => Math.min(Math.max((m - 0.5) * 2, 0), 1);
+
 // schreibt 0–255-Werte (→ Plan/Build.md Datenfluss)
 function terrainColor(out, o, hm, m, s, rel) {
     let r, g, b;
@@ -273,7 +278,7 @@ function terrainColor(out, o, hm, m, s, rel) {
         r = a[1][0] + (c[1][0] - a[1][0]) * f;
         g = a[1][1] + (c[1][1] - a[1][1]) * f;
         b = a[1][2] + (c[1][2] - a[1][2]) * f;
-        const k = Math.min(Math.max((s - ROCK_SLOPE[0]) / (ROCK_SLOPE[1] - ROCK_SLOPE[0]), 0), 1);
+        const k = rockWeight(s);
         r += (ROCK[0] - r) * k;
         g += (ROCK[1] - g) * k;
         b += (ROCK[2] - b) * k;
@@ -283,7 +288,7 @@ function terrainColor(out, o, hm, m, s, rel) {
         b *= lit;
     }
     if (m > 0.5) {
-        const f = (m - 0.5) * 2; // weiche Fahrbahnkante
+        const f = roadWeight(m);
         r = r * (1 - f) + roadRGB[0] * f;
         g = g * (1 - f) + roadRGB[1] * f;
         b = b * (1 - f) + roadRGB[2] * f;
@@ -446,6 +451,7 @@ const panel = buildPanel(params, {
     load: () => loadInput.click(),
     exports: {
         'Heightmap PNG (16-bit)': exportPng16,
+        'Splatmap PNG (RGBA)': exportSplatmap,
         'Metadata JSON': exportMeta,
         'Heightmap PNG (8-bit preview)': exportPng,
     },
@@ -517,6 +523,25 @@ async function exportPng16() {
     const px = new Uint16Array(RES * RES);
     for (let i = 0; i < px.length; i++) px[i] = Math.round(heights[i] * 65535); // heights schon 0–1 geklemmt
     download(await encodePng(RES, RES, px, 1, 16), `heightmap-${params.seed}-16bit.png`);
+}
+
+// Splatmap RGBA: R Straße · G Fels · B Wasser + Ufer (bis zur Sand-Grenze der Farbrampe) · A Rest (Gras);
+// Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md)
+async function exportSplatmap() {
+    const px = new Uint8Array(RES * RES * 4), shore = STOPS[1][0];
+    for (let i = 0; i < RES * RES; i++) {
+        const h = heights[i] * params.maxH;
+        const road = roadWeight(roadMask[i]);
+        const wet = Math.min(Math.max(1 - (h - params.waterLevel) / shore, 0), 1);
+        const water = (1 - road) * wet;
+        const rock = (1 - road) * (1 - wet) * rockWeight(slope[i]); // (1 − wet), nicht (1 − water): sonst Summe > 1
+        const R = Math.floor(road * 255), G = Math.floor(rock * 255), B = Math.floor(water * 255);
+        px[i * 4] = R;
+        px[i * 4 + 1] = G;
+        px[i * 4 + 2] = B;
+        px[i * 4 + 3] = 255 - R - G - B; // floor → Summe ≤ 255, A ≥ 0
+    }
+    download(await encodePng(RES, RES, px, 4, 8), `splatmap-${params.seed}.png`);
 }
 
 // Maßstab + Konvention für die Engine, dazu alle Einstellungen (Save-Format) → reproduzierbar
