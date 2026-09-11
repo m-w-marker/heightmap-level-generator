@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GUI } from 'lil-gui';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, ROADS_OFFSET } from './uniforms.js';
@@ -98,6 +99,7 @@ let heights = new Float32Array(RES * RES);
 let roadMask = new Float32Array(RES * RES);
 
 async function generate() {
+    const t0 = performance.now();
     const roads = generateRoads(params.seed, MAP, params.roadCount);
     encodeUniforms({ ...params, mapSize: MAP, res: RES }, roads, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
@@ -156,6 +158,8 @@ async function generate() {
     }
     terrain = buildTerrainMesh();
     scene.add(terrain);
+
+    console.log(`Regeneration: ${(performance.now() - t0).toFixed(0)} ms`);
 }
 
 // --- 2D-Preview (Farbcodierung nach Höhe) ---
@@ -265,7 +269,90 @@ function buildTerrainMesh() {
     return new THREE.Mesh(geo, terrainMat);
 }
 
-generate().catch(e => console.error('generate:', e));
+// --- M5: GUI + Export (→ Plan/Build.md M5) ---
+// Debounce + Coalescing: Slider-Drags triggern nur eine Regeneration, keine Überlappung
+let genTimer = 0;
+let genBusy = false;
+let genDirty = false;
+function scheduleGenerate() {
+    clearTimeout(genTimer);
+    genTimer = setTimeout(runGenerate, 150);
+}
+async function runGenerate() {
+    if (genBusy) { genDirty = true; return; }
+    genBusy = true;
+    try {
+        await generate();
+    } catch (e) {
+        console.error('generate:', e);
+    } finally {
+        genBusy = false;
+        if (genDirty) { genDirty = false; runGenerate(); }
+    }
+}
+
+function addNum(folder, key, min, max, step) {
+    folder.add(params, key).min(min).max(max).step(step).name(key).onChange(scheduleGenerate);
+}
+
+const gui = new GUI({ title: 'Terrain' });
+gui.add(params, 'seed').min(1).max(99999).step(1).name('Seed').onChange(scheduleGenerate);
+addNum(gui.addFolder('Basis'), 'baseLevel', 0, 60, 0.5);
+const fHuegel = gui.addFolder('Hügel');
+addNum(fHuegel, 'hillAmp', 0, 30, 0.5);
+addNum(fHuegel, 'hillWave', 20, 400, 5);
+const fBerge = gui.addFolder('Berge');
+addNum(fBerge, 'mountainAmp', 0, 150, 5);
+addNum(fBerge, 'mountainWave', 60, 500, 5);
+addNum(fBerge, 'clusterWave', 60, 500, 5);
+const fCliff = gui.addFolder('Abrisskanten');
+addNum(fCliff, 'cliffDrop', 0, 60, 0.5);
+addNum(fCliff, 'cliffWave', 20, 300, 5);
+addNum(fCliff, 'cliffWidth', 2, 60, 0.5);
+addNum(fCliff, 'cliffAreaWave', 40, 400, 5);
+const fRoad = gui.addFolder('Straßen');
+addNum(fRoad, 'roadCount', 0, MAX_ROADS, 1);
+addNum(fRoad, 'roadWidth', 2, 40, 0.5);
+addNum(fRoad, 'roadSlope', 1, 30, 0.5);
+addNum(fRoad, 'roadLevel', 0, 60, 0.5);
+const fRim = gui.addFolder('Rand-Ring');
+addNum(fRim, 'rimAmp', 0, 100, 1);
+addNum(fRim, 'rimZone', 10, 150, 5);
+addNum(fRim, 'rimWave', 20, 300, 5);
+const fGlobal = gui.addFolder('Global');
+addNum(fGlobal, 'maxH', 50, 300, 5);
+addNum(fGlobal, 'waterLevel', 0, 50, 0.5);
+gui.add({ regenerate: runGenerate }, 'regenerate').name('Regenerieren');
+gui.add({ exportPng }, 'exportPng').name('PNG exportieren');
+
+// Graustufen-PNG der rohen Heightmap (0–1 → 0–255), 1:1 zu den Preview-Daten
+function exportPng() {
+    const c = document.createElement('canvas');
+    c.width = RES;
+    c.height = RES;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(RES, RES);
+    const d = img.data;
+    for (let i = 0; i < heights.length; i++) {
+        const v = Math.min(Math.max(Math.round(heights[i] * 255), 0), 255);
+        d[i * 4] = v;
+        d[i * 4 + 1] = v;
+        d[i * 4 + 2] = v;
+        d[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    c.toBlob(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `heightmap-${params.seed}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+    }, 'image/png');
+}
+
+runGenerate();
 
 renderer.setAnimationLoop(() => {
     controls.update();
