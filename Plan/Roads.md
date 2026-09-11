@@ -1,6 +1,6 @@
 # Plan: Roads – Terrain-aware Straßen
 
-**Status:** offen
+**Status:** in Arbeit
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -77,7 +77,7 @@ Readback → 2D-Preview + 3D-Mesh (wie bisher).
   Abstand halten.
 
 ## Abgeschlossen
-- [ ] S1 Prepass 128² — geprüft am YYYY-MM-DD
+- [x] S1 Prepass 128² — geprüft am 2026-09-11
 - [ ] S2 roadgen.js: Dijkstra + Level — geprüft am YYYY-MM-DD
 - [ ] S3 WGSL + Uniforms: following Level — geprüft am YYYY-MM-DD
 - [ ] S4 GUI + Doku — geprüft am YYYY-MM-DD

@@ -62,6 +62,10 @@ const params = {
     roadWidth: 10,
     roadSlope: 5,
     roadLevel: 26,
+    roadOffset: 2,
+    levelSmoothing: 5,
+    slopePenalty: 1.5,
+    waterAvoid: 2,
 };
 
 const uniformsData = new Float32Array(ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS);
@@ -113,7 +117,7 @@ async function readBuffer(buf, bytes) {
     return out;
 }
 
-let terrain128 = new Float32Array(PRE * PRE);
+let terrain128 = new Float32Array(PRE * PRE); // in Metern (→ Plan/Roads.md)
 
 async function generate() {
     const t0 = performance.now();
@@ -129,18 +133,26 @@ async function generate() {
     prePass.dispatchWorkgroups(PRE / 16, PRE / 16);
     prePass.end();
     queue.submit([preEnc.finish()]);
-    terrain128.set(await readBuffer(heightBuf, PRE * PRE * 4));
+    const pre = await readBuffer(heightBuf, PRE * PRE * 4);
+    for (let i = 0; i < pre.length; i++) terrain128[i] = pre[i] * params.maxH;
 
     // Prepass-Konsole-Check (→ Plan/Roads.md S1): Min/Max ≈ Final-Pass
     let pMn = Infinity, pMx = -Infinity;
-    for (let i = 0; i < terrain128.length; i++) {
-        const h = terrain128[i] * params.maxH;
+    for (const h of terrain128) {
         if (h < pMn) pMn = h;
         if (h > pMx) pMx = h;
     }
     console.log(`Prepass 128²: min ${pMn.toFixed(1)} m · max ${pMx.toFixed(1)} m`);
 
-    const roads = generateRoads(params.seed, MAP, params.roadCount);
+    const { points: roads, levels } = generateRoads(params.seed, MAP, params.roadCount,
+        { size: PRE, data: terrain128 }, params);
+    let lMn = Infinity, lMx = -Infinity;
+    for (let i = 0; i < params.roadCount * ROAD_POINTS; i++) {
+        if (levels[i] < lMn) lMn = levels[i];
+        if (levels[i] > lMx) lMx = levels[i];
+    }
+    if (params.roadCount > 0)
+        console.log(`Road-Level (CPU): ${lMn.toFixed(1)}–${lMx.toFixed(1)} m (terrain-followend, ab S3 Readback)`);
     encodeUniforms({ ...params, mapSize: MAP, res: RES }, roads, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
 
