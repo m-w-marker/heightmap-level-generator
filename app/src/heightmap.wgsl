@@ -23,13 +23,18 @@ struct Params {
     rimScale: f32,
     roadCount: f32,
     roadHalfWidth: f32,
-    roadSlope: f32,
+    roadSlope: f32,    // rad
+    roadSlopeVar: f32, // rad
     roadTolerance: f32,
 };
 
 // = MAX_ROADS / ROAD_POINTS in roadgen.js (Layout-Test prüft); Array-Größe = Produkt
 const MAX_ROADS = 16u;
 const ROAD_POINTS = 32u;
+
+const SLOPE_VAR_WAVE = 40.0; // m
+const SLOPE_MIN = 0.1745;    // 10° in rad
+const SLOPE_MAX = 1.3963;    // 80° in rad
 
 // Punkt = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
@@ -144,8 +149,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Böschung mit fester Neigung (Gelände in einen Kegel um das Band geklemmt → Kante nur, wo das Gelände
     // stärker abweicht; tiefer Einschnitt = breitere Böschung, keine Wand)
     // vereinfacht: nur die nächste Straße klemmt – Kreuzungen mit abweichendem Level knicken an der Mittellinie
+    // Böschungswinkel schwankt entlang der Straße (Noise, Wellenlänge SLOPE_VAR_WAVE) → mal Schulter, mal Abrisskante
     if (nRoads > 0u) {
-        let e = u.params.roadTolerance + max(dMin - u.params.roadHalfWidth, 0.0) * u.params.roadSlope;
+        let ang = clamp(u.params.roadSlope + u.params.roadSlopeVar * vnoise(w / SLOPE_VAR_WAVE, u.params.seed + 606.1),
+            SLOPE_MIN, SLOPE_MAX);
+        let e = u.params.roadTolerance + max(dMin - u.params.roadHalfWidth, 0.0) * tan(ang);
         h = clamp(h, roadL - e, roadL + e);
     }
 

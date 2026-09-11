@@ -62,6 +62,7 @@ const params = {
     waterLevel: 15,
     roadWidth: 4,
     roadSlope: 35, // Böschungswinkel in °
+    roadSlopeVar: 20, // ± ° entlang der Straße
     roadOffset: -0.3, // leicht eingesunken wie ein Feldweg (→ Plan/StrassenLandschaft.md)
     roadTolerance: 0.7,
     roadColor: '#9a8462',
@@ -423,6 +424,7 @@ addNum(fRoad, 'exitCount', 0, 4, 1);
 addNum(fRoad, 'extraLinks', 0, 4, 1);
 addNum(fRoad, 'roadWidth', 1, 5, 0.5);
 addNum(fRoad, 'roadSlope', 15, 60, 1);
+addNum(fRoad, 'roadSlopeVar', 0, 30, 1);
 addNum(fRoad, 'roadOffset', -2, 3, 0.1);
 addNum(fRoad, 'roadTolerance', 0, 3, 0.1);
 fRoad.addColor(params, 'roadColor').onChange(() => { setRoadColor(); refreshView(); });

@@ -52,7 +52,8 @@ export const PARAM_FIELDS = {
     rimScale: p => 1 / p.rimWave,
     roadCount: p => p.roadCount,
     roadHalfWidth: p => p.roadWidth / 2,
-    roadSlope: p => Math.tan(p.roadSlope * Math.PI / 180), // Böschungswinkel ° → Höhe pro m
+    roadSlope: p => p.roadSlope * Math.PI / 180,       // Böschungswinkel ° → rad (tan im Shader nach Variation)
+    roadSlopeVar: p => p.roadSlopeVar * Math.PI / 180, // ± Schwankung entlang der Straße
     roadTolerance: p => p.roadTolerance,
 };
 

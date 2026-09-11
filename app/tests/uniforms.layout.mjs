@@ -23,8 +23,9 @@ const wgslFields = structM
 check(JSON.stringify(wgslFields) === JSON.stringify(Object.keys(PARAM_FIELDS)),
     `WGSL-Feldreihenfolge == PARAM_FIELDS (${wgslFields.length} vs ${Object.keys(PARAM_FIELDS).length} Felder)`);
 
-// Byte-Offset von roads
-check(ROADS_OFFSET * 4 === 96, `ROADS_OFFSET*4 == 96 (ist ${ROADS_OFFSET * 4})`);
+// Byte-Offset von roads = Params-Größe auf 16 B aufgerundet (Layout-Regel 2+3, → .clinerules/wgsl.md)
+const roadsByte = Math.ceil(wgslFields.length * 4 / 16) * 16;
+check(ROADS_OFFSET * 4 === roadsByte, `ROADS_OFFSET*4 == ${roadsByte} (ist ${ROADS_OFFSET * 4})`);
 
 // Array-Größe in WGSL
 const arrM = wgsl.match(/roads:\s*array<vec4<f32>,\s*(\d+)>/);
