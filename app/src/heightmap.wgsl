@@ -28,11 +28,15 @@ struct Params {
     passWidth: f32,
 };
 
-// 8 Straßen × 32 Punkte, feste Größe. Punkt = vec4(x, y, level m, 0)
+// = MAX_ROADS / ROAD_POINTS in roadgen.js (Layout-Test prüft); Array-Größe = Produkt
+const MAX_ROADS = 16u;
+const ROAD_POINTS = 32u;
+
+// Punkt = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
 struct Uniforms {
     params: Params,
-    roads: array<vec4<f32>, 256>,
+    roads: array<vec4<f32>, 512>,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -118,10 +122,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // 4) Straßen: nächstes Segment liefert Distanz + Level (linear zwischen den Endpunkten) (→ .clinerules/wgsl.md)
     var roadL = 0.0;
     var dMin = 1e9;
-    let nRoads = min(u32(u.params.roadCount), 8u);
+    let nRoads = min(u32(u.params.roadCount), MAX_ROADS);
     for (var r = 0u; r < nRoads; r = r + 1u) {
-        let base = r * 32u;
-        for (var s = 0u; s < 31u; s = s + 1u) {
+        let base = r * ROAD_POINTS;
+        for (var s = 0u; s + 1u < ROAD_POINTS; s = s + 1u) {
             let a = u.roads[base + s];
             let b = u.roads[base + s + 1u];
             let dt = distPointSeg(w, a.xy, b.xy);

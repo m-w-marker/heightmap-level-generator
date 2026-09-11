@@ -1,11 +1,14 @@
-// Node-Sanity für roadgen (→ Plan/Roads.md S2): Edge-to-Edge, in Map-Grenzen, deterministisch,
-// Umgehung (lokaler Hügel), Levels = Terrain + Offset
+// Node-Sanity für roadgen (→ Plan/TerrainStrassennetz.md N1/N2): Netz-Planung, Straßen Knoten→Knoten,
+// in Map-Grenzen, deterministisch, Hügel-Umgehung, kein Parallelband, Level = Feld an der Position, Laufzeit
 import { generateRoads, planNetwork, sampleTerrain, MAX_ROADS, ROAD_POINTS } from '../src/roadgen.js';
 
 const seed = 1337;
 const mapSize = 400;
 const N = 128;
-const opts = { waterLevel: 15, roadOffset: 2, levelSmoothing: 5, slopePenalty: 5, waterAvoid: 2 };
+const opts = {
+    waterLevel: 15, roadOffset: 2, levelSmoothing: 12, slopePenalty: 5, waterAvoid: 2,
+    rimAmp: 40, rimZone: 45, rimAvoid: 2, townCount: 6, townSpacing: 70, exitCount: 3, extraLinks: 2, reuse: 0.4,
+};
 
 let fail = 0;
 function check(cond, msg) {
@@ -32,60 +35,94 @@ function bumpTerrain() {
     return { size: N, data };
 }
 
-const a = generateRoads(seed, mapSize, 4, flatTerrain(), opts);
-const a2 = generateRoads(seed, mapSize, 4, flatTerrain(), opts);
+const road = (res, r) => res.points.subarray(r * ROAD_POINTS * 2, (r + 1) * ROAD_POINTS * 2);
+function distToRoad(pts, x, y) {
+    let d = Infinity;
+    for (let i = 0; i + 2 < pts.length; i += 2) {
+        const ax = pts[i], ay = pts[i + 1], bx = pts[i + 2], by = pts[i + 3];
+        const abx = bx - ax, aby = by - ay;
+        const t = Math.min(Math.max(((x - ax) * abx + (y - ay) * aby) / Math.max(abx * abx + aby * aby, 1e-9), 0), 1);
+        d = Math.min(d, Math.hypot(x - ax - abx * t, y - ay - aby * t));
+    }
+    return d;
+}
+
+const a = generateRoads(seed, mapSize, flatTerrain(), opts);
+const a2 = generateRoads(seed, mapSize, flatTerrain(), opts);
 check(same(a.points, a2.points), 'deterministisch: gleicher Seed → gleiche Straßen');
 check(same(a.levels, a2.levels), 'deterministisch: gleicher Seed → gleiche Levels');
-check(!same(a.points, generateRoads(seed + 1, mapSize, 4, flatTerrain(), opts).points), 'anderer Seed → andere Straßen');
-
-for (const count of [4, 8]) {
-    const { points, levels } = generateRoads(seed, mapSize, count, flatTerrain(), opts);
-    check(points.length === MAX_ROADS * ROAD_POINTS * 2, `feste Größe ${MAX_ROADS * ROAD_POINTS * 2} Floats (count=${count})`);
-    check(levels.length === MAX_ROADS * ROAD_POINTS, `Levels-Größe ${MAX_ROADS * ROAD_POINTS} (count=${count})`);
-    for (let r = 0; r < count; r++) {
-        const pts = points.subarray(r * ROAD_POINTS * 2, (r + 1) * ROAD_POINTS * 2);
-        let inBounds = true;
-        let len = 0;
-        for (let i = 0; i < pts.length; i += 2) {
-            const x = pts[i], y = pts[i + 1];
-            if (x < 0 || x > mapSize || y < 0 || y > mapSize) inBounds = false;
-            if (i >= 2) len += Math.hypot(x - pts[i - 2], y - pts[i - 1]);
-        }
-        check(inBounds, `Straß ${r}: alle ${ROAD_POINTS} Punkte in Map-Grenzen`);
-        check(len > 200, `Straß ${r}: Länge ${len.toFixed(0)} m > 200 m`);
-        const edgeDist = (x, y) => Math.min(x, y, mapSize - x, mapSize - y);
-        check(edgeDist(pts[0], pts[1]) <= 2, `Straß ${r}: Startpunkt an Kante (Edge-to-Edge)`);
-        check(edgeDist(pts[pts.length - 2], pts[pts.length - 1]) <= 2, `Straß ${r}: Endpunkt an Kante (Edge-to-Edge)`);
-        for (let i = 0; i < ROAD_POINTS; i++)
-            check(Math.abs(levels[r * ROAD_POINTS + i] - 32) < 0.01, `Straß ${r}: Level = 30 m + 2 m Offset`);
-    }
+check(!same(a.points, generateRoads(seed + 1, mapSize, flatTerrain(), opts).points), 'anderer Seed → andere Straßen');
+check(a.points.length === MAX_ROADS * ROAD_POINTS * 2, `feste Größe ${MAX_ROADS * ROAD_POINTS * 2} Floats`);
+check(a.levels.length === MAX_ROADS * ROAD_POINTS, `Levels-Größe ${MAX_ROADS * ROAD_POINTS}`);
+check(a.count >= 5 && a.count <= MAX_ROADS, `Straßenanzahl ${a.count} (5…${MAX_ROADS})`);
+for (let r = 0; r < a.count; r++) {
+    const pts = road(a, r), [A, B] = a.edges[r].map(i => a.nodes[i]);
+    let inBounds = true;
+    for (let i = 0; i < pts.length; i += 2)
+        if (pts[i] < 0 || pts[i] > mapSize || pts[i + 1] < 0 || pts[i + 1] > mapSize) inBounds = false;
+    check(inBounds, `Straße ${r}: alle ${ROAD_POINTS} Punkte in Map-Grenzen`);
+    check(Math.hypot(pts[0] - A.x, pts[1] - A.y) < 0.5 && Math.hypot(pts[pts.length - 2] - B.x, pts[pts.length - 1] - B.y) < 0.5,
+        `Straße ${r}: verbindet ihre Knoten`);
+    for (let i = 0; i < ROAD_POINTS; i++)
+        check(Math.abs(a.levels[r * ROAD_POINTS + i] - 32) < 0.01, `Straße ${r}: Level = 30 m + 2 m Offset`);
 }
 
-// Umgehung: keine Straß über den Hügelgrat — Max-Höhe entlang Pfad < 60 m (Grund 30 m + halbe Amplitude)
+// Umgehung: keine Straße über den Hügelgrat — Max-Höhe entlang Pfad < 60 m (Grund 30 m + halbe Amplitude)
+const bumpRes = generateRoads(seed, mapSize, bumpTerrain(), opts);
 {
     const bump = bumpTerrain();
-    const { points } = generateRoads(seed, mapSize, 8, bump, opts);
-    for (let r = 0; r < 8; r++) {
+    for (let r = 0; r < bumpRes.count; r++) {
+        const pts = road(bumpRes, r);
         let mx = 0;
-        for (let i = r * ROAD_POINTS * 2; i < (r + 1) * ROAD_POINTS * 2; i += 2)
-            mx = Math.max(mx, sampleTerrain(bump, mapSize, points[i], points[i + 1]));
-        check(mx < 60, `Straß ${r}: Max-Höhe entlang Pfad ${mx.toFixed(1)} m < 60 m (Hügelgrat 90 m)`);
+        for (let i = 0; i < pts.length; i += 2) mx = Math.max(mx, sampleTerrain(bump, mapSize, pts[i], pts[i + 1]));
+        check(mx < 60, `Straße ${r}: Max-Höhe entlang Pfad ${mx.toFixed(1)} m < 60 m (Hügelgrat 90 m)`);
     }
 }
 
-// Rand-Ring (→ Plan/TerrainStrassennetz.md T2): mit rimAvoid weniger Straßenpunkte in der Randzone (nur queren)
+// Kein Parallelband: Punkte 3–15 m neben einer fremden Straße, deren Abstand dabei gleich bleibt
+// (< 2 m Änderung zum Nachbarpunkt; Y-Einmündungen verjüngen sich stetig → zählen nicht), nicht am Knoten; < 5 %
+for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
+    let total = 0, par = 0;
+    for (let r = 0; r < res.count; r++) {
+        const pts = road(res, r);
+        const dOther = (x, y) => { let d = Infinity; for (let o = 0; o < res.count; o++) if (o !== r) d = Math.min(d, distToRoad(road(res, o), x, y)); return d; };
+        let prev = dOther(pts[0], pts[1]);
+        for (let i = 2; i < pts.length; i += 2) {
+            const x = pts[i], y = pts[i + 1], d = dOther(x, y);
+            const alongside = d >= 3 && d < 15 && Math.abs(d - prev) < 2;
+            prev = d;
+            if (res.nodes.some(n => Math.hypot(n.x - x, n.y - y) < 25)) continue;
+            total++;
+            if (alongside) par++;
+        }
+    }
+    check(par <= 0.05 * total, `${name}: ${par}/${total} Punkte im Parallelband (≤ 5 %)`);
+}
+
+// Level an gleicher Stelle gleich (geglättetes Feld statt Mittel entlang der Polyline)
 {
-    const rimZone = 45;
-    const inRim = o => {
-        const { points } = generateRoads(seed, mapSize, MAX_ROADS, flatTerrain(), o);
-        let k = 0;
-        for (let i = 0; i < points.length; i += 2)
-            if (Math.min(points[i], points[i + 1], mapSize - points[i], mapSize - points[i + 1]) < rimZone) k++;
-        return k;
-    };
-    const off = inRim({ ...opts, rimAmp: 40, rimZone, rimAvoid: 0 });
-    const on = inRim({ ...opts, rimAmp: 40, rimZone, rimAvoid: 2 });
-    check(on < off, `rimAvoid: ${on} statt ${off} Punkte in der Randzone`);
+    let worst = 0;
+    for (let r = 0; r < bumpRes.count; r++) for (let o = r + 1; o < bumpRes.count; o++) {
+        const p = road(bumpRes, r), q = road(bumpRes, o);
+        for (let i = 0; i < ROAD_POINTS; i++) for (let k = 0; k < ROAD_POINTS; k++) {
+            if (Math.hypot(p[2 * i] - q[2 * k], p[2 * i + 1] - q[2 * k + 1]) < 1)
+                worst = Math.max(worst, Math.abs(bumpRes.levels[r * ROAD_POINTS + i] - bumpRes.levels[o * ROAD_POINTS + k]));
+        }
+    }
+    check(worst <= 0.3, `Level an gleicher Stelle (< 1 m Abstand): max Δ ${worst.toFixed(2)} m ≤ 0,3 m`);
+}
+
+// Rand-Ring (→ T2): Ausfahrt-Straßen queren die Randzone nur (Länge in der Zone ≤ 1,6 × rimZone)
+for (let r = 0; r < a.count; r++) {
+    if (!a.edges[r].some(i => a.nodes[i].exit)) continue;
+    const pts = road(a, r);
+    let len = 0;
+    for (let i = 2; i < pts.length; i += 2) {
+        const mx = (pts[i] + pts[i - 2]) / 2, my = (pts[i + 1] + pts[i - 1]) / 2;
+        if (Math.min(mx, my, mapSize - mx, mapSize - my) < opts.rimZone)
+            len += Math.hypot(pts[i] - pts[i - 2], pts[i + 1] - pts[i - 1]);
+    }
+    check(len <= 1.6 * opts.rimZone, `Ausfahrt-Straße ${r}: ${len.toFixed(0)} m in der Randzone ≤ ${(1.6 * opts.rimZone).toFixed(0)} m`);
 }
 
 // Netz-Planung (→ Plan/TerrainStrassennetz.md N1): Orte trocken/flach/außerhalb Randzone, Mindestabstand,
@@ -124,17 +161,18 @@ for (const count of [4, 8]) {
 // Laufzeit: kaputter Heap fällt nicht funktional auf, sondern als Sekunden pro Straße (Budget < 500 ms)
 {
     const bump = bumpTerrain();
-    let worst = 0;
+    const big = { ...opts, townCount: 8, townSpacing: 50, extraLinks: 4, exitCount: 4 };
+    let worst = 0, roads = 0;
     for (let s = 1000; s < 1020; s++) {
         const t = performance.now();
-        generateRoads(s, mapSize, MAX_ROADS, bump, opts);
+        roads = Math.max(roads, generateRoads(s, mapSize, bump, big).count);
         worst = Math.max(worst, performance.now() - t);
     }
-    check(worst < 200, `generateRoads ${MAX_ROADS} Straßen: max ${worst.toFixed(0)} ms < 200 ms`);
+    check(worst < 200, `generateRoads bis ${roads} Straßen: max ${worst.toFixed(0)} ms < 200 ms`);
 }
 
 if (fail) {
     console.error(`${fail} Checks fehlgeschlagen`);
     process.exit(1);
 }
-console.log('roadgen-Sanity: OK — Edge-to-Edge, in Map-Grenzen, deterministisch, Hügel-Umgehung, Level = Terrain + Offset, Laufzeit');
+console.log(`roadgen-Sanity: OK — Netz (${a.count} Straßen), Knoten→Knoten, deterministisch, Hügel-Umgehung, kein Parallelband, Level-Feld, Randzone, Laufzeit`);

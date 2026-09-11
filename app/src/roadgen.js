@@ -1,11 +1,14 @@
-// Seed-basierte Straßen-Polylines auf der CPU (→ Plan/Roads.md)
-// Dijkstra auf dem 128²-Terrain-Grid (Edge-to-Edge, Steigungs-/Wasser-Vermeidung),
-// Chaikin-Glättung, äquidistant auf 32 Punkte resampled + terrain-followende Levels
-// (gleitender Mittelwert + roadOffset).
-// Feste Größe 8×32 — WGSL hardcodiert array<vec4, 256> und die Loop.
+// Seed-basiertes Straßennetz auf der CPU (→ Plan/TerrainStrassennetz.md)
+// Orte + Ausfahrten (planNetwork) → Dijkstra je Kante auf dem 128²-Terrain-Grid mit gemeinsamem
+// Kostenfeld (vorhandene Straßen billig, Band daneben teuer) → Glättung → 32 Punkte je Straße
+// + Levels aus 2D-geglättetem Terrain (+ roadOffset).
+// Feste Größe MAX_ROADS×ROAD_POINTS — WGSL hat dieselben Konstanten (Layout-Test prüft).
 
-export const MAX_ROADS = 8;
+export const MAX_ROADS = 16;
 export const ROAD_POINTS = 32;
+const BAND_WIDTH = 12; // m neben einer Straße: teuer → spätere Straßen münden ein statt parallel zu laufen
+const BAND_AVOID = 3;  // Zusatzkosten pro m im Band
+const PATH_SMOOTH = 3; // Zellen Halbfenster gleitender Mittelwert (16-Nachbar-Pfad → Kurven statt Knicke)
 
 // Deterministischer PRNG: gleicher Seed → gleiche Straßen
 function mulberry32(seed) {
@@ -70,41 +73,79 @@ export function sampleTerrain(terrain, mapSize, x, y) {
     return top * (1 - ty) + bot * ty;
 }
 
-export function generateRoads(seed, mapSize, count, terrain, opts) {
-    const rand = mulberry32(seed);
-    const n = Math.min(Math.max(count, 0), MAX_ROADS);
+// Gleitender Mittelwert über Punktpaare, Fenster schrumpft zu den Enden → Endpunkte bleiben
+function smoothPath(pts, half) {
+    const m = pts.length / 2, out = pts.slice();
+    for (let i = 1; i < m - 1; i++) {
+        const w = Math.min(half, i, m - 1 - i);
+        let sx = 0, sy = 0;
+        for (let k = i - w; k <= i + w; k++) { sx += pts[2 * k]; sy += pts[2 * k + 1]; }
+        out[2 * i] = sx / (2 * w + 1);
+        out[2 * i + 1] = sy / (2 * w + 1);
+    }
+    return out;
+}
+
+// Separabler Box-Blur (Radius r Zellen, Kanten geclamped) → Level-Feld: gleiche Stelle = gleiches Level
+function blurTerrain(terrain, r) {
+    if (r < 1) return terrain;
+    const N = terrain.size, src = terrain.data;
+    const tmp = new Float32Array(N * N), out = new Float32Array(N * N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        let s = 0;
+        for (let k = -r; k <= r; k++) s += src[y * N + Math.min(Math.max(x + k, 0), N - 1)];
+        tmp[y * N + x] = s / (2 * r + 1);
+    }
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        let s = 0;
+        for (let k = -r; k <= r; k++) s += tmp[Math.min(Math.max(y + k, 0), N - 1) * N + x];
+        out[y * N + x] = s / (2 * r + 1);
+    }
+    return { size: N, data: out };
+}
+
+// → { points (MAX_ROADS×ROAD_POINTS×2), levels (MAX_ROADS×ROAD_POINTS), count, nodes, edges }
+export function generateRoads(seed, mapSize, terrain, opts) {
+    const net = planNetwork(seed, mapSize, terrain, opts);
+    const edges = net.edges.slice(0, MAX_ROADS);
     const N = terrain.size, cs = mapSize / N;
     const points = new Float32Array(MAX_ROADS * ROAD_POINTS * 2);
     const levels = new Float32Array(MAX_ROADS * ROAD_POINTS);
     const cellX = x => Math.min(N - 1, Math.max(0, Math.floor(x / cs)));
-    for (let r = 0; r < n; r++) {
-        // Start an zufälliger Kante (t geclamped, keine degenerierten Ecken-Straßen),
-        // Ziel auf gegenüberliegender (50 %) oder benachbarter Kante
-        const edge = Math.floor(rand() * 4);
-        const [sx, sy] = edgePoint(edge, 0.02 + 0.96 * rand(), mapSize);
-        const tEdge = rand() < 0.5 ? edge ^ 2 : (edge + 1 + 2 * Math.floor(rand() * 2)) % 4;
-        const [tx, ty] = edgePoint(tEdge, 0.02 + 0.96 * rand(), mapSize);
-
-        const path = dijkstra(terrain, mapSize, cellX(sx) + cellX(sy) * N, cellX(tx) + cellX(ty) * N, opts);
-        // Welt-Punkte: Startpunkt, Grid-Zellenzentren, Zielpunkt → Chaikin → Resample
-        const pts = [sx, sy];
-        for (const c of path) pts.push((c % N + 0.5) * cs, ((c / N | 0) + 0.5) * cs);
-        pts.push(tx, ty);
-        const res = resample(chaikin(pts, 2), ROAD_POINTS);
-        points.set(res, r * ROAD_POINTS * 2);
-
-        // Terrain-followende Levels: bilinear Höhe → gleitender Mittelwert (levelSmoothing Punkte) → + roadOffset
-        const half = Math.floor(opts.levelSmoothing / 2);
-        for (let i = 0; i < ROAD_POINTS; i++) {
-            let sum = 0, c = 0;
-            for (let k = Math.max(0, i - half); k <= Math.min(ROAD_POINTS - 1, i + half); k++) {
-                sum += sampleTerrain(terrain, mapSize, res[2 * k], res[2 * k + 1]);
-                c++;
-            }
-            levels[r * ROAD_POINTS + i] = sum / c + opts.roadOffset;
+    const field = new Uint8Array(N * N); // 0 frei, 1 Band neben Straße, 2 Straße
+    const band = Math.ceil(BAND_WIDTH / cs);
+    const levelField = blurTerrain(terrain, Math.round(opts.levelSmoothing / cs));
+    edges.forEach(([ia, ib], r) => {
+        const A = net.nodes[ia], B = net.nodes[ib];
+        const path = dijkstra(terrain, mapSize, cellX(A.x) + cellX(A.y) * N, cellX(B.x) + cellX(B.y) * N, opts, field);
+        for (const c of path) {
+            const cx = c % N, cy = (c / N) | 0;
+            for (let y = Math.max(cy - band, 0); y <= Math.min(cy + band, N - 1); y++)
+                for (let x = Math.max(cx - band, 0); x <= Math.min(cx + band, N - 1); x++)
+                    if (field[y * N + x] === 0) field[y * N + x] = 1;
         }
-    }
-    return { points, levels };
+        // Straßenzellen inkl. Zwischenzelle der Springer-Züge (sonst Lücken → Band-Kosten auf der Straße)
+        path.forEach((c, i) => {
+            field[c] = 2;
+            if (i > 0) {
+                const p = path[i - 1];
+                field[Math.round(((c / N | 0) + (p / N | 0)) / 2) * N + Math.round((c % N + p % N) / 2)] = 2;
+            }
+        });
+
+        // Welt-Punkte: Knoten A, Zellenzentren, Knoten B → Mittelwert + Chaikin → Resample
+        const pts = [A.x, A.y];
+        for (const c of path) pts.push((c % N + 0.5) * cs, ((c / N | 0) + 0.5) * cs);
+        pts.push(B.x, B.y);
+        const res = resample(chaikin(smoothPath(pts, PATH_SMOOTH), 2), ROAD_POINTS);
+        points.set(res, r * ROAD_POINTS * 2);
+        // Level nie unter Wasser (Damm statt Graben)
+        for (let i = 0; i < ROAD_POINTS; i++) {
+            const l = sampleTerrain(levelField, mapSize, res[2 * i], res[2 * i + 1]) + opts.roadOffset;
+            levels[r * ROAD_POINTS + i] = Math.max(l, opts.waterLevel + opts.roadOffset);
+        }
+    });
+    return { points, levels, count: edges.length, nodes: net.nodes, edges };
 }
 
 // Netz-Knoten + Kanten (→ Plan/TerrainStrassennetz.md N1)
@@ -192,10 +233,12 @@ function edgePoint(edge, t, mapSize) {
     return [0, t * mapSize];
 }
 
-// Dijkstra 8-Nachbarn; Kantenkosten = length + slopePenalty·|Δh| (+ waterAvoid·length unter waterLevel)
-// (+ rimAvoid·length·Ring-Gewicht: Prepass hat keinen Ring, Straßen dort werden zu Pässen → nur queren).
+// Dijkstra 16-Nachbarn (inkl. Springer-Züge: 26,6°-Schritte statt 45°-Zickzack);
+// Kantenkosten = length + slopePenalty·|Δh| (+ waterAvoid·length unter waterLevel)
+// (+ rimAvoid·length·Ring-Gewicht: Prepass hat keinen Ring, Straßen dort werden zu Pässen → nur queren);
+// Kostenfeld `field`: auf Straße × reuse, im Band daneben + BAND_AVOID·length.
 // Feste Nachbar-Reihenfolge + striktes < → deterministisch (→ Plan/Roads.md „Routing“)
-function dijkstra(terrain, mapSize, start, goal, opts) {
+function dijkstra(terrain, mapSize, start, goal, opts, field) {
     const N = terrain.size, h = terrain.data, cs = mapSize / N, nN = N * N;
     const dist = new Float64Array(nN).fill(Infinity);
     const prev = new Int32Array(nN).fill(-1);
@@ -253,7 +296,8 @@ function dijkstra(terrain, mapSize, start, goal, opts) {
         const t = Math.min(e / opts.rimZone, 1);
         return 1 - t * t * (3 - 2 * t);
     }
-    const NB = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+    const NB = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
+        [-2, -1], [-1, -2], [1, -2], [2, -1], [-2, 1], [-1, 2], [1, 2], [2, 1]];
     dist[start] = 0;
     pushOrDec(start, 0);
     while (hs > 0) {
@@ -261,7 +305,7 @@ function dijkstra(terrain, mapSize, start, goal, opts) {
         const du = dist[u];
         if (u === goal) break;
         const ux = u % N, uy = (u / N) | 0;
-        for (let k = 0; k < 8; k++) {
+        for (let k = 0; k < NB.length; k++) {
             const x = ux + NB[k][0], y = uy + NB[k][1];
             if (x < 0 || y < 0 || x >= N || y >= N) continue;
             const v = y * N + x;
@@ -269,6 +313,8 @@ function dijkstra(terrain, mapSize, start, goal, opts) {
             let c = len + opts.slopePenalty * Math.abs(h[v] - h[u]);
             if (h[u] < opts.waterLevel || h[v] < opts.waterLevel) c += opts.waterAvoid * len;
             if (opts.rimAmp > 0) c += opts.rimAvoid * len * rimWeight(x, y);
+            if (field[v] === 2) c *= opts.reuse;
+            else if (field[v] === 1) c += BAND_AVOID * len;
             const nd = du + c;
             if (nd < dist[v]) {
                 dist[v] = nd;

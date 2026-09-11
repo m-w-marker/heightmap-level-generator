@@ -65,11 +65,16 @@ const params = {
     roadSlope: 35, // Böschungswinkel in °
     roadLevel: 26,
     roadOffset: 2,
-    levelSmoothing: 5,
-    slopePenalty: 1.5,
+    levelSmoothing: 12, // m Radius des Level-Felds
+    slopePenalty: 4,
     waterAvoid: 2,
     passWidth: 40,
     rimAvoid: 2,
+    townCount: 5,
+    townSpacing: 80,
+    exitCount: 3,
+    extraLinks: 2,
+    reuse: 0.4,
 };
 
 const uniformsData = new Float32Array(ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS);
@@ -150,9 +155,10 @@ async function generate() {
     }
     console.log(`Prepass 128²: min ${pMn.toFixed(1)} m · max ${pMx.toFixed(1)} m`);
 
-    const { points: roads, levels } = generateRoads(params.seed, MAP, params.roadCount,
-        { size: PRE, data: terrain128 }, params);
-    encodeUniforms({ ...params, mapSize: MAP, res: RES }, roads, levels, uniformsData);
+    const tr = performance.now();
+    const { points: roads, levels, count, nodes } = generateRoads(params.seed, MAP, { size: PRE, data: terrain128 }, params);
+    console.log(`Straßennetz: ${nodes.filter(n => !n.exit).length} Orte · ${nodes.filter(n => n.exit).length} Ausfahrten · ${count} Straßen · ${(performance.now() - tr).toFixed(0)} ms`);
+    encodeUniforms({ ...params, mapSize: MAP, res: RES, roadCount: count }, roads, levels, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
 
     const bytes = RES * RES * 4;
@@ -201,7 +207,7 @@ async function generate() {
     );
 
     // Readback-Level vs. CPU-Level an den Polyline-Punkten (→ Plan/Roads.md S3); Ausreißer nur an Kreuzungen erwartet
-    const nPts = Math.min(params.roadCount, MAX_ROADS) * ROAD_POINTS;
+    const nPts = count * ROAD_POINTS;
     let dMax = 0, nOut = 0;
     for (let k = 0; k < nPts; k++) {
         const px = Math.min(Math.floor(roads[2 * k] / MAP * RES), RES - 1);

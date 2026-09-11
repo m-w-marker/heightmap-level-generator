@@ -32,6 +32,12 @@ check(!!arrM, 'roads-Array in heightmap.wgsl');
 if (arrM) check(Number(arrM[1]) === MAX_ROADS * ROAD_POINTS,
     `WGSL roads-Array ${arrM[1]} == MAX_ROADS*ROAD_POINTS ${MAX_ROADS * ROAD_POINTS}`);
 
+// WGSL-Konstanten der Straßen-Loop == JS
+for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS]]) {
+    const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)u;`));
+    check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
+}
+
 // Länge des Encode-Puffers in main.js (Ausdruck auswerten, falls er Konstanten nutzt)
 const bufM = mainJs.match(/uniformsData\s*=\s*new Float32Array\(([^)]+)\)/);
 check(!!bufM, 'uniformsData-Allokation in main.js');
