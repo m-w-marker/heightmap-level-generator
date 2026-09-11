@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI } from 'lil-gui';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
-import { encodeUniforms, ROADS_OFFSET } from './uniforms.js';
+import { encodeUniforms, ROADS_OFFSET, autoMaxH } from './uniforms.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
 const renderer = new WebGPURenderer({ antialias: true });
@@ -49,14 +49,16 @@ const params = {
     mountainAmp: 60,
     mountainWave: 180,
     clusterWave: 220,
+    mountainCoverage: 30,
     cliffDrop: 20,
     cliffWave: 90,
     cliffWidth: 15,
     cliffAreaWave: 160,
+    cliffCoverage: 30,
     rimAmp: 40,
     rimZone: 45,
     rimWave: 90,
-    maxH: 120,
+    maxH: 0, // automatisch (autoMaxH) in generate()
     waterLevel: 15,
     roadCount: 4,
     roadWidth: 10,
@@ -121,6 +123,7 @@ let terrain128 = new Float32Array(PRE * PRE); // in Metern (→ Plan/Roads.md)
 
 async function generate() {
     const t0 = performance.now();
+    params.maxH = autoMaxH(params);
 
     // Prepass: 128² Roh-Terrain (ohne Straßen) → Routing-Daten für roadgen (→ Plan/Roads.md)
     encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0 },
@@ -363,11 +366,13 @@ const fBerge = gui.addFolder('Berge');
 addNum(fBerge, 'mountainAmp', 0, 150, 5);
 addNum(fBerge, 'mountainWave', 60, 500, 5);
 addNum(fBerge, 'clusterWave', 60, 500, 5);
+addNum(fBerge, 'mountainCoverage', 0, 100, 1);
 const fCliff = gui.addFolder('Abrisskanten');
 addNum(fCliff, 'cliffDrop', 0, 60, 0.5);
 addNum(fCliff, 'cliffWave', 20, 300, 5);
 addNum(fCliff, 'cliffWidth', 2, 60, 0.5);
 addNum(fCliff, 'cliffAreaWave', 40, 400, 5);
+addNum(fCliff, 'cliffCoverage', 0, 100, 1);
 const fRoad = gui.addFolder('Straßen');
 addNum(fRoad, 'roadCount', 0, MAX_ROADS, 1);
 addNum(fRoad, 'roadWidth', 2, 40, 0.5);
@@ -378,7 +383,7 @@ addNum(fRim, 'rimAmp', 0, 100, 1);
 addNum(fRim, 'rimZone', 10, 150, 5);
 addNum(fRim, 'rimWave', 20, 300, 5);
 const fGlobal = gui.addFolder('Global');
-addNum(fGlobal, 'maxH', 50, 300, 5);
+fGlobal.add(params, 'maxH').name('maxH (auto)').disable().listen();
 addNum(fGlobal, 'waterLevel', 0, 50, 0.5);
 gui.add({ regenerate: runGenerate }, 'regenerate').name('Regenerieren');
 gui.add({ exportPng }, 'exportPng').name('PNG exportieren');

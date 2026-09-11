@@ -1,6 +1,6 @@
 # Plan: Terrain-Kalibrierung + Straßennetz
 
-**Status:** offen
+**Status:** in Arbeit
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -19,15 +19,16 @@ Pässen im Rand-Ring. Löst `Plan/Roads.md` S4 ab.
 
 ## Entscheidungen
 - **Masken per Abdeckung:** neue Regler `mountainCoverage`, `cliffCoverage` (0–100 % der Map).
-  fbm wird durch sein gemessenes σ geteilt (≈ N(0,1)); Schwelle `Φ⁻¹(1 − coverage)` rechnet die CPU
-  (`uniforms.js`) und schickt sie als Uniform. (Verworfen: Perzentil aus dem Prepass = Maske müsste
-  mit in den Readback, mehr Code für ±wenige %.)
+  Schwelle = gemessenes fbm-Quantil bei `1 − coverage` (Tabelle 5-%-Schritte in `uniforms.js`, CPU
+  → Uniform). (Geändert in T1: Tabelle statt σ + Φ⁻¹ – exakter, keine Näherungsformel. Verworfen:
+  Perzentil aus dem Prepass = Maske müsste mit in den Readback, mehr Code für ±wenige %.)
 - **Amplituden in Metern:** Noise-Terme durch ihr gemessenes p95 normiert → p95 der Auslenkung ≈
   Regler (`hillAmp 17` → ±17 m). σ/p95-Konstanten stehen einmal in `uniforms.js`, gemessen und
   bewacht von `tests/terrain.stats.mjs` (JS-Nachbau des WGSL-Noise – für Statistik reicht f64, anders
   als für Straßen-Levels).
 - **`maxH` automatisch** = `baseLevel + hillAmp + mountainAmp + cliffDrop/2 + rimAmp` (obere
-  Schranke) → nie Abschneiden oben; Regler entfällt, GUI zeigt den Wert. Unten bleibt Clamp auf 0.
+  Schranke, theoretische Noise-Maxima) → nie Abschneiden oben; Regler entfällt schon in T1, GUI
+  zeigt den Wert. Unten bleibt Clamp auf 0.
 - **Pässe im Rand-Ring:** Prepass ohne Rand-Ring (`rimAmp = 0`) → Routing und Levels sehen das innere
   Gelände; im Final-Pass wird `rimF` nahe Straßen abgesenkt (`smoothstep(roadHalfWidth, passWidth,
   dMin)`), Innen-Straßen meiden die Randzone über Kosten `rimAvoid` (Ausfahrten queren sie kurz).
@@ -65,7 +66,7 @@ Pässen im Rand-Ring. Löst `Plan/Roads.md` S4 ab.
      Browser: Kreuzungen statt Parallelspuren, Regeneration < 500 ms.
 5. **N3 GUI + Doku**: Straßen-Ordner (`townCount`, `townSpacing`, `exitCount`, `extraLinks`,
    `roadWidth`, `roadSlope`, `roadOffset`, `levelSmoothing`, `slopePenalty`, `waterAvoid`, `reuse`,
-   `passWidth`); weg: `roadCount`, `roadLevel`, `maxH`. `.clinerules/projekt.md` (Flattening,
+   `passWidth`); weg: `roadCount`, `roadLevel` (`maxH` schon in T1). `.clinerules/projekt.md` (Flattening,
    Datenfluss, maxH), README-Parametertabelle.
    → Prüfung: `npm run check` grün; alle Slider triggern Regeneration.
 
@@ -74,7 +75,7 @@ Pässen im Rand-Ring. Löst `Plan/Roads.md` S4 ab.
 - 16 × 31 Segmente pro Pixel im Shader: bei Budget-Riss Segmente vorab pro Kachel filtern.
 
 ## Abgeschlossen
-- [ ] T1 Terrain-Kalibrierung — geprüft am YYYY-MM-DD
+- [x] T1 Terrain-Kalibrierung — geprüft am 2026-09-11
 - [ ] T2 Pässe + Straßenfarbe — geprüft am YYYY-MM-DD
 - [ ] N1 Knoten + Kanten — geprüft am YYYY-MM-DD
 - [ ] N2 Netz-Routing + Levels — geprüft am YYYY-MM-DD

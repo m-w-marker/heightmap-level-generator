@@ -12,10 +12,12 @@ struct Params {
     mountainAmp: f32,
     mountainScale: f32,
     maskScale: f32,
+    mountainThr: f32,
     cliffDrop: f32,
     cliffScale: f32,
     cliffWidth: f32,
     cliffMaskScale: f32,
+    cliffThr: f32,
     rimAmp: f32,
     rimZone: f32,
     rimScale: f32,
@@ -97,18 +99,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let uv = vec2<f32>(f32(gid.x) + 0.5, f32(gid.y) + 0.5) / f32(res);
     let w = uv * u.params.mapSize; // Weltkoordinate in Metern
 
+    // Amplituden, Schwellen und cliffWidth kommen auf der CPU normiert an (→ uniforms.js, Messwerte)
     // 1) Basisterain + Hügel
-    var h = u.params.baseLevel + fbm(w * u.params.hillScale, u.params.seed, 5) * u.params.hillAmp * 0.5;
+    var h = u.params.baseLevel + fbm(w * u.params.hillScale, u.params.seed, 5) * u.params.hillAmp;
 
-    // 2) Berge: Cluster-Maske × Ridge
-    let mMask = smoothstep(0.35, 0.65, fbm(w * u.params.maskScale, u.params.seed + 101.3, 3));
+    // 2) Berge: Cluster-Maske (Schwelle = Abdeckung, Weiche ±0.15 = MASK_SOFT) × Ridge
+    let mMask = smoothstep(u.params.mountainThr - 0.15, u.params.mountainThr + 0.15, fbm(w * u.params.maskScale, u.params.seed + 101.3, 3));
     h += mMask * ridge(w * u.params.mountainScale, u.params.seed + 202.7, 5) * u.params.mountainAmp;
 
     // 3) Abrisskanten: Plateaus mit steilen Bruchkanten
-    // vereinfacht: Meter → Noise-Band über Gradient ≈ 0.5 × Scale
+    // vereinfacht: Meter → Noise-Band über den mittleren Gradienten an der Kante – lokal ±Faktor 2
     let cn = fbm(w * u.params.cliffScale, u.params.seed + 303.1, 4) * 0.5 + 0.5;
-    let cMask = smoothstep(0.30, 0.60, fbm(w * u.params.cliffMaskScale, u.params.seed + 404.9, 3));
-    let band = max(u.params.cliffWidth * u.params.cliffScale * 0.5, 0.02);
+    let cMask = smoothstep(u.params.cliffThr - 0.15, u.params.cliffThr + 0.15, fbm(w * u.params.cliffMaskScale, u.params.seed + 404.9, 3));
+    let band = max(u.params.cliffWidth * u.params.cliffScale, 0.02);
     h += cMask * (smoothstep(0.5 - band, 0.5 + band, cn) * 2.0 - 1.0) * u.params.cliffDrop * 0.5;
 
     // 4) Rand-Ring: Anhöhe Richtung Map-Kante
