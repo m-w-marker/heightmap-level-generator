@@ -124,7 +124,7 @@ async function generate() {
 
     // Prepass: 128² Roh-Terrain (ohne Straßen) → Routing-Daten für roadgen (→ Plan/Roads.md)
     encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0 },
-        new Float32Array(MAX_ROADS * ROAD_POINTS * 2), uniformsData);
+        new Float32Array(MAX_ROADS * ROAD_POINTS * 2), new Float32Array(MAX_ROADS * ROAD_POINTS), uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     const preEnc = device.createCommandEncoder();
     const prePass = preEnc.beginComputePass();
@@ -146,14 +146,7 @@ async function generate() {
 
     const { points: roads, levels } = generateRoads(params.seed, MAP, params.roadCount,
         { size: PRE, data: terrain128 }, params);
-    let lMn = Infinity, lMx = -Infinity;
-    for (let i = 0; i < params.roadCount * ROAD_POINTS; i++) {
-        if (levels[i] < lMn) lMn = levels[i];
-        if (levels[i] > lMx) lMx = levels[i];
-    }
-    if (params.roadCount > 0)
-        console.log(`Road-Level (CPU): ${lMn.toFixed(1)}–${lMx.toFixed(1)} m (terrain-followend, ab S3 Readback)`);
-    encodeUniforms({ ...params, mapSize: MAP, res: RES }, roads, uniformsData);
+    encodeUniforms({ ...params, mapSize: MAP, res: RES }, roads, levels, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
 
     const bytes = RES * RES * 4;
@@ -198,8 +191,21 @@ async function generate() {
         `Heightmap 1024²: min ${mn.toFixed(1)} m · max ${mx.toFixed(1)} m · Ø ${(sum / heights.length).toFixed(1)} m · Wasser ${(100 * water / heights.length).toFixed(1)} %`
     );
     console.log(
-        `Straßen: ${(100 * roadPx / heights.length).toFixed(1)} % · Road-Level ${rMn.toFixed(1)}–${rMx.toFixed(1)} m (Ziel ${params.roadLevel} m ± 0,5)`
+        `Straßen: ${(100 * roadPx / heights.length).toFixed(1)} % · Road-Level ${rMn.toFixed(1)}–${rMx.toFixed(1)} m`
     );
+
+    // Readback-Level vs. CPU-Level an den Polyline-Punkten (→ Plan/Roads.md S3); Ausreißer nur an Kreuzungen erwartet
+    const nPts = Math.min(params.roadCount, MAX_ROADS) * ROAD_POINTS;
+    let dMax = 0, nOut = 0;
+    for (let k = 0; k < nPts; k++) {
+        const px = Math.min(Math.floor(roads[2 * k] / MAP * RES), RES - 1);
+        const py = Math.min(Math.floor(roads[2 * k + 1] / MAP * RES), RES - 1);
+        const d = Math.abs(heights[py * RES + px] * params.maxH - levels[k]);
+        if (d > dMax) dMax = d;
+        if (d > 0.5) nOut++;
+    }
+    if (nPts > 0)
+        console.log(`Road-Level GPU vs. CPU: max Δ ${dMax.toFixed(2)} m · ${nOut}/${nPts} Punkte außerhalb ±0,5 m`);
 
     updatePreview();
 

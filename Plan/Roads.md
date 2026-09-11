@@ -1,6 +1,6 @@
 # Plan: Roads – Terrain-aware Straßen
 
-**Status:** in Arbeit
+**Status:** fertig (abgelöst durch Plan/TerrainStrassennetz.md)
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -26,7 +26,9 @@ Berggrate. Dazu passende neue Road-Settings.
   keinen Benefit bei 16k Knoten.)
 - **Road-Level folgt dem Terrain:** pro Polyline-Punkt bilinear Geländehöhe (128²-Grid) →
   gleitender Mittelwert (Fenster `levelSmoothing`) + `roadOffset`. Im Shader linear interpoliert
-  zwischen den Segment-Endpunkten (neues Uniform `roadLevels: array<f32, 256>`, 8×32, nach `roads`).
+  zwischen den Segment-Endpunkten. Level steckt in `roads[].z` → `vec4(x, y, level, 0)`.
+  (Geändert in S3: eigenes `roadLevels: array<f32, 256>` ist im uniform-Adressraum ungültig,
+  Stride < 16 B → `.clinerules/wgsl.md`; `.z` war frei, Bufferlänge bleibt.)
 - **Konventionswechsel (bewusst):** „Straßen: Flattening auf `roadLevel`“ → „Flattening an das
   terrain-followende Niveau (`roadOffset` über geglätteter Geländehöhe)“. „Gewinnt über allem“
   bleibt. Parameter `roadLevel` wird zu `roadOffset` (gleicher Float-Index 20 → kein Layout-Shift
@@ -40,7 +42,7 @@ Berggrate. Dazu passende neue Road-Settings.
 ## Datenfluss (neu)
 Seed + Params → Prepass-Dispatch (128², `roadCount=0`) → Readback 64 KB (Roh-Terrain, 0–1) →
 `roadgen.js`: Dijkstra Edge→Edge × N, Chaikin, resample 32 Punkte, Level-Punkte (8×32) →
-Uniform-Buffer (Params + `roads` 8×32 vec4 + `roadLevels` 8×32 f32) → Final-Dispatch (1024²) →
+Uniform-Buffer (Params + `roads` 8×32 vec4(x, y, level, 0)) → Final-Dispatch (1024²) →
 Readback → 2D-Preview + 3D-Mesh (wie bisher).
 
 ## Meilensteine (eine Stufe pro Durchgang)
@@ -56,13 +58,13 @@ Readback → 2D-Preview + 3D-Mesh (wie bisher).
      Level = Terrain + Offset (±0.1 m). `npm run sanity` + `npm run build` grün.
 3. **S3 WGSL + Uniforms: following Level** (`heightmap.wgsl`, `uniforms.js`, `main.js`,
    `tests/uniforms.layout.mjs` im selben Zug): `roadOffset`-Rename, `distPointSeg` → `vec2(d, t)`,
-   `roadF`/`roadL`-Tracking, `roadLevels`-Array, Bufferlänge
-   `ROADS_OFFSET + 4·8·32 + 8·32`, Konsole-Zeile: Readback-Road-Level vs. CPU-Expected (±0.5 m).
+   `roadF`/`roadL`-Tracking, Level in `roads[].z` (Bufferlänge unverändert
+   `ROADS_OFFSET + 4·8·32`), Konsole-Zeile: Readback-Road-Level vs. CPU-Expected (±0.5 m).
    → Prüfung: `npm run check` grün; Browser: keine senkrechten Wände/Deiche mehr (visuell),
      Konsole-Zeile im Toleranzband.
 4. **S4 GUI + Doku**: Straßen-Ordner neu besetzen (Entscheidung „Road-Settings“); `.clinerules`:
-   Projekt-Konventionen-Zeile (Flattening), Datenfluss-Zeile, `wgsl.md` „Aktuell“-Zeile
-   (`roadLevels` nach `roads`); Plan → `Plan/erledigt/`.
+   Projekt-Konventionen-Zeile (Flattening), Datenfluss-Zeile (`wgsl.md` schon in S3 erledigt);
+   Plan → `Plan/erledigt/`.
    → Prüfung: `npm run check` grün; alle neuen Slider triggern Regeneration.
 
 ## Scope-Ausschlüsse (bewusst nicht)
@@ -79,7 +81,8 @@ Readback → 2D-Preview + 3D-Mesh (wie bisher).
 ## Abgeschlossen
 - [x] S1 Prepass 128² — geprüft am 2026-09-11
 - [x] S2 roadgen.js: Dijkstra + Level — geprüft am 2026-09-11
-- [ ] S3 WGSL + Uniforms: following Level — geprüft am YYYY-MM-DD
-- [ ] S4 GUI + Doku — geprüft am YYYY-MM-DD
+- [x] S3 WGSL + Uniforms: following Level — geprüft am 2026-09-11 (check grün; Browser: Innen ohne Wände,
+  Kerben am Rand-Ring + parallele Straßen → Plan/TerrainStrassennetz.md)
+- [ ] S4 GUI + Doku — entfällt, aufgegangen in Plan/TerrainStrassennetz.md
 
 <!-- fertig: git mv Plan/Roads.md Plan/erledigt/ -->

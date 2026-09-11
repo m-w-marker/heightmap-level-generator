@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PARAM_FIELDS, ROADS_OFFSET } from '../src/uniforms.js';
+import { PARAM_FIELDS, ROADS_OFFSET, encodeUniforms } from '../src/uniforms.js';
 import { MAX_ROADS, ROAD_POINTS } from '../src/roadgen.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -39,6 +39,22 @@ if (bufM) {
     const len = new Function('ROADS_OFFSET', 'MAX_ROADS', 'ROAD_POINTS', `return ${bufM[1]}`)(ROADS_OFFSET, MAX_ROADS, ROAD_POINTS);
     const expected = ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS;
     check(len === expected, `Encode-Puffer ${len} Floats == ${expected} Floats`);
+}
+
+// Punkt-Packing vec4(x, y, level, 0): WGSL liest Level aus .z (→ .clinerules/wgsl.md)
+{
+    const nP = MAX_ROADS * ROAD_POINTS;
+    const out = new Float32Array(ROADS_OFFSET + 4 * nP);
+    const pts = new Float32Array(2 * nP).map((_, i) => i + 1);
+    const lv = new Float32Array(nP).map((_, i) => 1000 + i);
+    encodeUniforms({}, pts, lv, out);
+    let ok = true;
+    for (let k = 0; k < nP; k++) {
+        const o = ROADS_OFFSET + 4 * k;
+        if (out[o] !== pts[2 * k] || out[o + 1] !== pts[2 * k + 1] || out[o + 2] !== lv[k] || out[o + 3] !== 0) ok = false;
+    }
+    check(ok, `encodeUniforms packt alle ${nP} Punkte als vec4(x, y, level, 0)`);
+    check(/roadL\s*=\s*mix\(a\.z,\s*b\.z/.test(wgsl), 'WGSL liest Road-Level aus roads[].z');
 }
 
 if (fail) {

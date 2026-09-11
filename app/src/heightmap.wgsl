@@ -22,10 +22,10 @@ struct Params {
     roadCount: f32,
     roadHalfWidth: f32,
     roadSlope: f32,
-    roadLevel: f32,
+    roadOffset: f32, // nur Layout-Platzhalter: Offset steckt schon im Level (roads[].z)
 };
 
-// 8 Straßen × 32 Punkte, feste Größe.
+// 8 Straßen × 32 Punkte, feste Größe. Punkt = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
 struct Uniforms {
     params: Params,
@@ -81,11 +81,11 @@ fn ridge(p2: vec2<f32>, seed: f32, octaves: i32) -> f32 {
     return v;
 }
 
-// Distanz Punkt → Segment (→ Plan/Build.md WGSL-Design 5)
-fn distPointSeg(pt: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+// Distanz Punkt → Segment + Segment-Parameter t (→ Plan/Build.md WGSL-Design 5)
+fn distPointSeg(pt: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
     let ab = b - a;
     let t = clamp(dot(pt - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
-    return length(pt - (a + ab * t));
+    return vec2<f32>(length(pt - (a + ab * t)), t);
 }
 
 @compute @workgroup_size(16, 16)
@@ -116,17 +116,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let rimF = 1.0 - smoothstep(0.0, u.params.rimZone, edge);
     h += rimF * (0.6 + 0.4 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp;
 
-    // 5) Straßen: Min-Distanz Punkt → Segment über alle Polylines — gewinnt über allem
+    // 5) Straßen: stärkstes Segment bestimmt Gewicht + Level (linear zwischen den Endpunkten) — gewinnt über allem
     var roadF = 0.0;
+    var roadL = 0.0;
     let nRoads = min(u32(u.params.roadCount), 8u);
     for (var r = 0u; r < nRoads; r = r + 1u) {
         let base = r * 32u;
         for (var s = 0u; s < 31u; s = s + 1u) {
-            let d = distPointSeg(w, u.roads[base + s].xy, u.roads[base + s + 1u].xy);
-            roadF = max(roadF, 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + u.params.roadSlope, d));
+            let a = u.roads[base + s];
+            let b = u.roads[base + s + 1u];
+            let dt = distPointSeg(w, a.xy, b.xy);
+            let f = 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + u.params.roadSlope, dt.x);
+            if (f > roadF) {
+                roadF = f;
+                roadL = mix(a.z, b.z, dt.y);
+            }
         }
     }
-    h = mix(h, u.params.roadLevel, roadF);
+    h = mix(h, roadL, roadF);
 
     heights[idx] = clamp(h / u.params.maxH, 0.0, 1.0);
     roadMask[idx] = roadF;

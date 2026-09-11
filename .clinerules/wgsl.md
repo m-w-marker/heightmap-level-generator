@@ -7,7 +7,7 @@ paths:
 # Thema: WGSL-Compute & Uniform-Layout
 
 ## No-Gos
-- NICHT Arrays mit Element-Stride < 16 B im uniform-Adressraum (`array<vec2<f32>>` ist ungültig) → Punkte als `vec4(x, z, 0, 0)`, gelesen per `.xy`.
+- NICHT Arrays mit Element-Stride < 16 B im uniform-Adressraum (`array<vec2<f32>>`, `array<f32>` sind ungültig) → Punkte als `vec4(x, y, level, 0)`, gelesen per `.xy` / `.z`.
 - NICHT `struct Params` ändern, ohne `encodeUniforms()` im selben Zug 1:1 anzupassen. Die Feldreihenfolge ist der Float-Index.
 - NICHT Puffer- oder Array-Längen als Zahl hinschreiben, sondern aus `MAX_ROADS`/`ROAD_POINTS` berechnen. TypedArrays verwerfen Schreibzugriffe hinter dem Ende still.
 - NICHT WGSL im Browser testen ohne naga-Lauf vorher.
@@ -17,7 +17,7 @@ paths:
 2. Offset von Mitglied i+1 = `roundUp(Ende von i, Align(i+1))`.
 3. Nach einem Struct-Mitglied S liegt das nächste bei `≥ roundUp(16, Größe(S))`. naga rundet hier nicht auf, sondern meldet einen Fehler.
 
-Aktuell: `Params` = 21 × f32 = 84 B → `roads` ab Byte 96 = Float-Index 24; `roads` = `MAX_ROADS × ROAD_POINTS` vec4, Layout-Test `tests/uniforms.layout.mjs`.
+Aktuell: `Params` = 21 × f32 = 84 B → `roads` ab Byte 96 = Float-Index 24; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0), Layout-Test `tests/uniforms.layout.mjs`.
 
 ## Symptome
 Readback nur Nullen oder „Road-Level Infinity“ → Shader-Modul abgelehnt (Browser-Konsole) oder Params-Reihenfolge JS ≠ WGSL
