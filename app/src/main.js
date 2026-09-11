@@ -11,7 +11,7 @@ const renderer = new WebGPURenderer({ antialias: true });
 try {
     await renderer.init();
 } catch (e) {
-    document.body.innerHTML = `<pre style="color:#f88;padding:20px">WebGPU nicht verfügbar:\n${e.message}</pre>`;
+    document.body.innerHTML = `<pre style="color:#f88;padding:20px">WebGPU not available:\n${e.message}</pre>`;
     throw e;
 }
 
@@ -79,7 +79,7 @@ const params = {
 const uniformsData = new Float32Array(ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS);
 
 const device = renderer.backend.device;
-if (!device) throw new Error('Kein WebGPU-Device (WebGL-Fallback aktiv?)');
+if (!device) throw new Error('No WebGPU device (WebGL fallback active?)');
 const queue = device.queue;
 device.addEventListener('uncapturederror', e => console.error('WebGPU:', e.error.message));
 
@@ -156,7 +156,7 @@ async function generate() {
 
     const tr = performance.now();
     const { points: roads, levels, count, nodes } = generateRoads(params.seed, MAP, { size: PRE, data: terrain128 }, params);
-    console.log(`Straßennetz: ${nodes.filter(n => !n.exit).length} Orte · ${nodes.filter(n => n.exit).length} Ausfahrten · ${count} Straßen · ${(performance.now() - tr).toFixed(0)} ms`);
+    console.log(`Road network: ${nodes.filter(n => !n.exit).length} towns · ${nodes.filter(n => n.exit).length} exits · ${count} roads · ${(performance.now() - tr).toFixed(0)} ms`);
     encodeUniforms({ ...params, mapSize: MAP, res: RES, roadCount: count }, roads, levels, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
 
@@ -199,10 +199,10 @@ async function generate() {
         }
     }
     console.log(
-        `Heightmap 1024²: min ${mn.toFixed(1)} m · max ${mx.toFixed(1)} m · Ø ${(sum / heights.length).toFixed(1)} m · Wasser ${(100 * water / heights.length).toFixed(1)} %`
+        `Heightmap 1024²: min ${mn.toFixed(1)} m · max ${mx.toFixed(1)} m · avg ${(sum / heights.length).toFixed(1)} m · water ${(100 * water / heights.length).toFixed(1)} %`
     );
     console.log(
-        `Straßen: ${(100 * roadPx / heights.length).toFixed(1)} % · Road-Level ${rMn.toFixed(1)}–${rMx.toFixed(1)} m`
+        `Roads: ${(100 * roadPx / heights.length).toFixed(1)} % · road level ${rMn.toFixed(1)}–${rMx.toFixed(1)} m`
     );
 
     // Readback-Level vs. CPU-Level an den Polyline-Punkten (→ Plan/Roads.md S3); Fahrbahn darf im
@@ -217,7 +217,7 @@ async function generate() {
         if (d > band) nOut++;
     }
     if (nPts > 0)
-        console.log(`Road-Level GPU vs. CPU: max Δ ${dMax.toFixed(2)} m · ${nOut}/${nPts} Punkte außerhalb ±${band.toFixed(1)} m`);
+        console.log(`Road level GPU vs. CPU: max Δ ${dMax.toFixed(2)} m · ${nOut}/${nPts} points outside ±${band.toFixed(1)} m`);
 
     refreshView();
     console.log(`Regeneration: ${(performance.now() - t0).toFixed(0)} ms`);
@@ -381,15 +381,15 @@ gui.add(params, 'seed').min(1).max(99999).step(1).name('Seed').onChange(schedule
 // Presets = Standardwerte (gui.reset(), inkl. Seed) + Overrides (→ Plan/PresetsAusfahrten.md).
 // Buttons statt Dropdown: ein Dropdown würde von gui.reset() mitgesetzt → onChange-Schleife.
 const PRESETS = {
-    'Hügelland': { hillAmp: 12, hillWave: 100, mountainAmp: 25, mountainCoverage: 20, cliffDrop: 8, cliffCoverage: 5,
+    'Rolling hills': { hillAmp: 12, hillWave: 100, mountainAmp: 25, mountainCoverage: 20, cliffDrop: 8, cliffCoverage: 5,
         townCount: 7, townSpacing: 60, extraLinks: 3 },
-    'Weidefläche': { hillAmp: 4, hillWave: 160, mountainAmp: 0, mountainCoverage: 0, cliffDrop: 0, cliffCoverage: 0,
+    'Pasture': { hillAmp: 4, hillWave: 160, mountainAmp: 0, mountainCoverage: 0, cliffDrop: 0, cliffCoverage: 0,
         townCount: 4, townSpacing: 90, extraLinks: 1 },
-    'Gebirge': { baseLevel: 25, hillAmp: 10, mountainAmp: 110, mountainWave: 150, clusterWave: 180, mountainCoverage: 60,
+    'Mountains': { baseLevel: 25, hillAmp: 10, mountainAmp: 110, mountainWave: 150, clusterWave: 180, mountainCoverage: 60,
         cliffDrop: 25, cliffCoverage: 20, rimAmp: 60, townCount: 4, townSpacing: 70, slopePenalty: 6, extraLinks: 1 },
     'Canyon / Plateaus': { hillAmp: 3, mountainAmp: 20, mountainCoverage: 10, cliffDrop: 45, cliffWave: 110, cliffWidth: 6,
         cliffAreaWave: 200, cliffCoverage: 70, townCount: 5, slopePenalty: 6 },
-    'Seenplatte': { baseLevel: 18.5, hillAmp: 6, hillWave: 90, mountainAmp: 15, mountainCoverage: 10, cliffDrop: 6,
+    'Lakes': { baseLevel: 18.5, hillAmp: 6, hillWave: 90, mountainAmp: 15, mountainCoverage: 10, cliffDrop: 6,
         cliffCoverage: 5, waterLevel: 16, townCount: 5, waterAvoid: 4 },
 };
 function applyPreset(overrides) {
@@ -399,24 +399,24 @@ function applyPreset(overrides) {
     scheduleGenerate();
 }
 const fPreset = gui.addFolder('Presets');
-fPreset.add({ reset: () => applyPreset({}) }, 'reset').name('Standardwerte');
+fPreset.add({ reset: () => applyPreset({}) }, 'reset').name('Defaults');
 for (const [name, p] of Object.entries(PRESETS)) fPreset.add({ apply: () => applyPreset(p) }, 'apply').name(name);
-addNum(gui.addFolder('Basis'), 'baseLevel', 0, 60, 0.5);
-const fHuegel = gui.addFolder('Hügel');
+addNum(gui.addFolder('Base'), 'baseLevel', 0, 60, 0.5);
+const fHuegel = gui.addFolder('Hills');
 addNum(fHuegel, 'hillAmp', 0, 30, 0.5);
 addNum(fHuegel, 'hillWave', 20, 400, 5);
-const fBerge = gui.addFolder('Berge');
+const fBerge = gui.addFolder('Mountains');
 addNum(fBerge, 'mountainAmp', 0, 150, 5);
 addNum(fBerge, 'mountainWave', 60, 500, 5);
 addNum(fBerge, 'clusterWave', 60, 500, 5);
 addNum(fBerge, 'mountainCoverage', 0, 100, 1);
-const fCliff = gui.addFolder('Abrisskanten');
+const fCliff = gui.addFolder('Cliffs');
 addNum(fCliff, 'cliffDrop', 0, 60, 0.5);
 addNum(fCliff, 'cliffWave', 20, 300, 5);
 addNum(fCliff, 'cliffWidth', 2, 60, 0.5);
 addNum(fCliff, 'cliffAreaWave', 40, 400, 5);
 addNum(fCliff, 'cliffCoverage', 0, 100, 1);
-const fRoad = gui.addFolder('Straßen');
+const fRoad = gui.addFolder('Roads');
 // Maxima so, dass MST + Zusatz + Ausfahrten ≤ MAX_ROADS: (8 − 1) + 4 + 4 = 15
 addNum(fRoad, 'townCount', 1, 8, 1);
 addNum(fRoad, 'townSpacing', 30, 150, 5);
@@ -432,15 +432,15 @@ addNum(fRoad, 'levelSmoothing', 0, 40, 1);
 addNum(fRoad, 'slopePenalty', 0, 10, 0.5);
 addNum(fRoad, 'waterAvoid', 0, 5, 0.5);
 addNum(fRoad, 'reuse', 0.1, 1, 0.05);
-const fRim = gui.addFolder('Rand-Ring');
+const fRim = gui.addFolder('Border ring');
 addNum(fRim, 'rimAmp', 0, 100, 1);
 addNum(fRim, 'rimZone', 10, 150, 5);
 addNum(fRim, 'rimWave', 20, 300, 5);
 const fGlobal = gui.addFolder('Global');
 fGlobal.add(params, 'maxH').name('maxH (auto)').disable().listen();
 addNum(fGlobal, 'waterLevel', 0, 50, 0.5);
-gui.add({ regenerate: runGenerate }, 'regenerate').name('Regenerieren');
-gui.add({ exportPng }, 'exportPng').name('PNG exportieren');
+gui.add({ regenerate: runGenerate }, 'regenerate').name('Regenerate');
+gui.add({ exportPng }, 'exportPng').name('Export PNG');
 
 // Graustufen-PNG der rohen Heightmap (0–1 → 0–255), 1:1 zu den Preview-Daten
 function exportPng() {

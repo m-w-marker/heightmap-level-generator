@@ -1,4 +1,4 @@
-﻿# Plan: Ausfahrten am Ringfuß + Reset/Presets
+# Plan: Ausfahrten am Ringfuß + Reset/Presets
 
 **Status:** fertig
 **Datum:** 2026-09-11

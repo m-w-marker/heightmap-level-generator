@@ -1,4 +1,4 @@
-﻿# Plan: Terrain-Kalibrierung + Straßennetz
+# Plan: Terrain-Kalibrierung + Straßennetz
 
 **Status:** fertig
 **Datum:** 2026-09-11

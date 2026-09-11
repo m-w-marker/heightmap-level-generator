@@ -1,4 +1,4 @@
-﻿# Plan: Straßen liegen auf der Landschaft
+# Plan: Straßen liegen auf der Landschaft
 
 **Status:** fertig
 **Datum:** 2026-09-11

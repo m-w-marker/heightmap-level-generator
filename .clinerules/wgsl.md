@@ -22,11 +22,11 @@ paths:
 Aktuell: `Params` = 24 × f32 = 96 B → `roads` ab Byte 96 = Float-Index 24; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0), Layout-Test `tests/uniforms.layout.mjs`.
 
 ## Symptome
-Readback nur Nullen oder „Road-Level Infinity“ → Shader-Modul abgelehnt (Browser-Konsole) oder Params-Reihenfolge JS ≠ WGSL
+Readback nur Nullen oder „road level Infinity“ → Shader-Modul abgelehnt (Browser-Konsole) oder Params-Reihenfolge JS ≠ WGSL
 (`roadCount` liest dann ein falsches Feld → 0 Straßen).
 Firefox „featureLevel: compatibility … not yet supported“ (three.webgpu.js) → NICHT debuggen: beabsichteter Core-Fallback (Firefox-Bug 1905951).
 
 ## Werkzeuge
 - naga: `C:\naga-proj\target\debug\naga-runner.exe app\src\heightmap.wgsl` → `VALID` oder Fehlerkette
 - `npm run sanity` (Node, ohne Browser)
-- Browser-Konsole: Stats `Heightmap 1024²: …` und `Straßen: … Road-Level …` sind der Readback-Test
+- Browser-Konsole: Stats `Heightmap 1024²: …`, `Roads: … road level …` und `Road level GPU vs. CPU: …` sind der Readback-Test
