@@ -22,6 +22,7 @@ Aktuell: `Params` = 21 × f32 = 84 B → `roads` ab Byte 96 = Float-Index 24; `r
 ## Symptome
 Readback nur Nullen oder „Road-Level Infinity“ → Shader-Modul abgelehnt (Browser-Konsole) oder Params-Reihenfolge JS ≠ WGSL
 (`roadCount` liest dann ein falsches Feld → 0 Straßen).
+Firefox „featureLevel: compatibility … not yet supported“ (three.webgpu.js) → NICHT debuggen: beabsichteter Core-Fallback (Firefox-Bug 1905951).
 
 ## Werkzeuge
 - naga: `C:\naga-proj\target\debug\naga-runner.exe app\src\heightmap.wgsl` → `VALID` oder Fehlerkette
