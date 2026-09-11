@@ -83,7 +83,7 @@ Pässen im Rand-Ring. Löst `Plan/Roads.md` S4 ab.
 ## Abgeschlossen
 - [x] T1 Terrain-Kalibrierung — geprüft am 2026-09-11
 - [x] T2 Pässe + Straßenfarbe + Böschung als Neigung — geprüft am 2026-09-11 (check grün; Browser gesammelt am Ende)
-- [ ] N1 Knoten + Kanten — geprüft am YYYY-MM-DD
+- [x] N1 Knoten + Kanten — geprüft am 2026-09-11
 - [ ] N2 Netz-Routing + Levels — geprüft am YYYY-MM-DD
 - [ ] N3 GUI + Doku — geprüft am YYYY-MM-DD
 

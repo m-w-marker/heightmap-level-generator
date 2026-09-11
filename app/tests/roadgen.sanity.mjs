@@ -1,6 +1,6 @@
 // Node-Sanity für roadgen (→ Plan/Roads.md S2): Edge-to-Edge, in Map-Grenzen, deterministisch,
 // Umgehung (lokaler Hügel), Levels = Terrain + Offset
-import { generateRoads, sampleTerrain, MAX_ROADS, ROAD_POINTS } from '../src/roadgen.js';
+import { generateRoads, planNetwork, sampleTerrain, MAX_ROADS, ROAD_POINTS } from '../src/roadgen.js';
 
 const seed = 1337;
 const mapSize = 400;
@@ -86,6 +86,39 @@ for (const count of [4, 8]) {
     const off = inRim({ ...opts, rimAmp: 40, rimZone, rimAvoid: 0 });
     const on = inRim({ ...opts, rimAmp: 40, rimZone, rimAvoid: 2 });
     check(on < off, `rimAvoid: ${on} statt ${off} Punkte in der Randzone`);
+}
+
+// Netz-Planung (→ Plan/TerrainStrassennetz.md N1): Orte trocken/flach/außerhalb Randzone, Mindestabstand,
+// Ausfahrten am Rand, Graph zusammenhängend, deterministisch
+{
+    // flach 30 m + See (10 m) bei (130,130) r 55 + steiler Hügel bei (280,270)
+    const data = new Float32Array(N * N);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const x = (i + 0.5) * mapSize / N, y = (j + 0.5) * mapSize / N;
+        data[j * N + i] = Math.hypot(x - 130, y - 130) < 55 ? 10 : 30 + 60 * Math.exp(-((Math.hypot(x - 280, y - 270) / 25) ** 2));
+    }
+    const terr = { size: N, data };
+    const nopts = { waterLevel: 15, rimZone: 45, townCount: 6, townSpacing: 60, exitCount: 3, extraLinks: 2 };
+    const net = planNetwork(seed, mapSize, terr, nopts);
+    check(JSON.stringify(net) === JSON.stringify(planNetwork(seed, mapSize, terr, nopts)), 'Netz deterministisch');
+    const towns = net.nodes.filter(n => !n.exit), exits = net.nodes.filter(n => n.exit);
+    check(towns.length >= 3 && towns.length <= nopts.townCount, `Orte: ${towns.length} (3…${nopts.townCount})`);
+    check(exits.length === nopts.exitCount, `Ausfahrten: ${exits.length} == ${nopts.exitCount}`);
+    const edgeDist = n => Math.min(n.x, n.y, mapSize - n.x, mapSize - n.y);
+    for (const t of towns) {
+        const h = sampleTerrain(terr, mapSize, t.x, t.y);
+        check(h >= nopts.waterLevel + 1, `Ort (${t.x.toFixed(0)},${t.y.toFixed(0)}) trocken (${h.toFixed(1)} m)`);
+        check(h < 35, `Ort (${t.x.toFixed(0)},${t.y.toFixed(0)}) nicht am Hügel (${h.toFixed(1)} m)`);
+        check(edgeDist(t) >= nopts.rimZone, `Ort (${t.x.toFixed(0)},${t.y.toFixed(0)}) außerhalb Randzone`);
+    }
+    for (let a = 0; a < towns.length; a++) for (let b = a + 1; b < towns.length; b++)
+        check(Math.hypot(towns[a].x - towns[b].x, towns[a].y - towns[b].y) >= nopts.townSpacing, `Orte ${a}/${b} Mindestabstand`);
+    for (const e of exits) check(edgeDist(e) < 1e-6, 'Ausfahrt liegt auf der Kante');
+    const root = net.nodes.map((_, i) => i);
+    const find = i => (root[i] === i ? i : (root[i] = find(root[i])));
+    for (const [a, b] of net.edges) root[find(a)] = find(b);
+    check(net.nodes.every((_, i) => find(i) === find(0)), 'Netz zusammenhängend');
+    check(net.edges.length <= towns.length - 1 + nopts.extraLinks + nopts.exitCount, `Kanten ${net.edges.length} ≤ MST + Extra + Ausfahrten`);
 }
 
 // Laufzeit: kaputter Heap fällt nicht funktional auf, sondern als Sekunden pro Straße (Budget < 500 ms)
