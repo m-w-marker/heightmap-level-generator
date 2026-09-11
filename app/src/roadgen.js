@@ -196,6 +196,20 @@ const MIN_LINK_ANGLE = 35 * Math.PI / 180; // Zusatzkanten nicht fast parallel z
 // Zusatzkanten (Winkelcheck) + jede Ausfahrt → nächster Ort. → { nodes: [{x, y, exit}], edges: [[a, b]] }
 export function planNetwork(seed, mapSize, terrain, opts) {
     const rand = mulberry32(seed ^ 0x9e3779b9);
+    const nodes = placeTowns(rand, mapSize, terrain, opts);
+    const nT = nodes.length;
+
+    const off = rand();
+    for (let k = 0; k < opts.exitCount; k++) {
+        const s = (((k + off) / opts.exitCount + 0.1 * (rand() - 0.5)) % 1 + 1) % 1 * 4;
+        // auf dem um rimZone eingerückten Quadrat = Ringfuß (rimF = 0) → Ring bleibt geschlossen
+        const [x, y] = edgePoint(Math.floor(s), Math.min(Math.max(s % 1, 0.1), 0.9), mapSize - 2 * opts.rimZone);
+        nodes.push({ x: x + opts.rimZone, y: y + opts.rimZone, exit: true });
+    }
+    return { nodes, edges: linkNetwork(nodes, nT, opts.extraLinks) };
+}
+
+function placeTowns(rand, mapSize, terrain, opts) {
     const margin = opts.rimZone + TOWN_PROBE;
     const cands = [];
     for (let k = 0; k < TOWN_CANDIDATES; k++) {
@@ -216,16 +230,11 @@ export function planNetwork(seed, mapSize, terrain, opts) {
         if (nodes.length >= opts.townCount) break;
         if (nodes.every(n => Math.hypot(n.x - c.x, n.y - c.y) >= opts.townSpacing)) nodes.push({ x: c.x, y: c.y, exit: false });
     }
-    const nT = nodes.length;
+    return nodes;
+}
 
-    const off = rand();
-    for (let k = 0; k < opts.exitCount; k++) {
-        const s = (((k + off) / opts.exitCount + 0.1 * (rand() - 0.5)) % 1 + 1) % 1 * 4;
-        // auf dem um rimZone eingerückten Quadrat = Ringfuß (rimF = 0) → Ring bleibt geschlossen
-        const [x, y] = edgePoint(Math.floor(s), Math.min(Math.max(s % 1, 0.1), 0.9), mapSize - 2 * opts.rimZone);
-        nodes.push({ x: x + opts.rimZone, y: y + opts.rimZone, exit: true });
-    }
-
+// nodes[0 … nT−1] = Orte, Rest = Ausfahrten → [[a, b], …]
+function linkNetwork(nodes, nT, extraLinks) {
     const d = (a, b) => Math.hypot(nodes[a].x - nodes[b].x, nodes[a].y - nodes[b].y);
     const edges = [];
     // MST (Prim) über die Orte
@@ -253,7 +262,7 @@ export function planNetwork(seed, mapSize, terrain, opts) {
     pairs.sort((p, q) => d(p[0], p[1]) - d(q[0], q[1]));
     let extra = 0;
     for (const [i, j] of pairs) {
-        if (extra >= opts.extraLinks) break;
+        if (extra >= extraLinks) break;
         if (angleOk(i, j) && angleOk(j, i)) { edges.push([i, j]); extra++; }
     }
     // Ausfahrt → nächster Ort
@@ -262,7 +271,7 @@ export function planNetwork(seed, mapSize, terrain, opts) {
         for (let t = 1; t < nT; t++) if (d(e, t) < d(e, best)) best = t;
         edges.push([e, best]);
     }
-    return { nodes, edges };
+    return edges;
 }
 
 function edgePoint(edge, t, mapSize) {
@@ -282,10 +291,46 @@ function dijkstra(terrain, mapSize, start, goal, opts, field) {
     const rimCells = Math.max(opts.rimZone / cs - 1.5, 0); // Zellzentrum tiefer als rimZone − cs in der Randzone; ≥ 0 = Map-Grenze
     const dist = new Float64Array(nN).fill(Infinity);
     const prev = new Int32Array(nN).fill(-1);
-    // Min-Heap mit decrease-key (pos): jeder Knoten max. 1× im Heap → Größe ≤ nN (Arrays fix nN)
-    const heapN = new Int32Array(nN);
-    const heapK = new Float64Array(nN);
-    const pos = new Int32Array(nN).fill(-1);
+    const heap = minHeap(nN);
+    const NB = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
+        [-2, -1], [-1, -2], [1, -2], [2, -1], [-2, 1], [-1, 2], [1, 2], [2, 1]];
+    dist[start] = 0;
+    heap.pushOrDec(start, 0);
+    while (heap.size > 0) {
+        const u = heap.pop();
+        const du = dist[u];
+        if (u === goal) break;
+        const ux = u % N, uy = (u / N) | 0;
+        for (let k = 0; k < NB.length; k++) {
+            const x = ux + NB[k][0], y = uy + NB[k][1];
+            if (Math.min(x, y, N - 1 - x, N - 1 - y) < rimCells) continue;
+            const v = y * N + x;
+            const len = Math.hypot(NB[k][0], NB[k][1]) * cs;
+            const dh = Math.abs(h[v] - h[u]), over = dh / len / gMax - 1;
+            let c = len + opts.slopePenalty * dh;
+            if (over > 0) c += GRADE_COST * over * over * len;
+            if (h[u] < opts.waterLevel || h[v] < opts.waterLevel) c += opts.waterAvoid * len;
+            if (field[v] === 2) c *= opts.reuse;
+            else if (field[v] === 1) c += BAND_AVOID * len;
+            const nd = du + c;
+            if (nd < dist[v]) {
+                dist[v] = nd;
+                prev[v] = u;
+                heap.pushOrDec(v, nd);
+            }
+        }
+    }
+    const path = [];
+    for (let v = goal; v !== -1; v = prev[v]) path.push(v);
+    path.reverse();
+    return path;
+}
+
+// Min-Heap mit decrease-key (pos): jeder Knoten max. 1× im Heap → Größe ≤ n (Arrays fix n)
+function minHeap(n) {
+    const heapN = new Int32Array(n);
+    const heapK = new Float64Array(n);
+    const pos = new Int32Array(n).fill(-1);
     let hs = 0;
     function siftUp(i) {
         const node = heapN[i], key = heapK[i];
@@ -330,36 +375,5 @@ function dijkstra(terrain, mapSize, start, goal, opts, field) {
         }
         return top;
     }
-    const NB = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
-        [-2, -1], [-1, -2], [1, -2], [2, -1], [-2, 1], [-1, 2], [1, 2], [2, 1]];
-    dist[start] = 0;
-    pushOrDec(start, 0);
-    while (hs > 0) {
-        const u = pop();
-        const du = dist[u];
-        if (u === goal) break;
-        const ux = u % N, uy = (u / N) | 0;
-        for (let k = 0; k < NB.length; k++) {
-            const x = ux + NB[k][0], y = uy + NB[k][1];
-            if (Math.min(x, y, N - 1 - x, N - 1 - y) < rimCells) continue;
-            const v = y * N + x;
-            const len = Math.hypot(NB[k][0], NB[k][1]) * cs;
-            const dh = Math.abs(h[v] - h[u]), over = dh / len / gMax - 1;
-            let c = len + opts.slopePenalty * dh;
-            if (over > 0) c += GRADE_COST * over * over * len;
-            if (h[u] < opts.waterLevel || h[v] < opts.waterLevel) c += opts.waterAvoid * len;
-            if (field[v] === 2) c *= opts.reuse;
-            else if (field[v] === 1) c += BAND_AVOID * len;
-            const nd = du + c;
-            if (nd < dist[v]) {
-                dist[v] = nd;
-                prev[v] = u;
-                pushOrDec(v, nd);
-            }
-        }
-    }
-    const path = [];
-    for (let v = goal; v !== -1; v = prev[v]) path.push(v);
-    path.reverse();
-    return path;
+    return { pushOrDec, pop, get size() { return hs; } };
 }

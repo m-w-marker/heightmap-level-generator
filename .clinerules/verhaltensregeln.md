@@ -22,5 +22,5 @@ Reihenfolge = Priorität. Kurze Frage → kurze Antwort.
 - Bewusste Abkürzung: `// vereinfacht: <Grenze> – ab <Auslöser>` (greppbar)
 
 ## Code-Qualitäts-Check (nur auf Anfrage)
-Suchen: doppelte Logik · Methoden > 60 Zeilen · toter Code / TODO / auskommentierte Blöcke · Duplikate > 10 Zeilen.
+Suchen: bugs · doppelte Logik · Methoden > 60 Zeilen · toter Code / TODO / auskommentierte Blöcke · Duplikate > 10 Zeilen.
 Bericht als Tabelle: Datei | Zeile | Fund | Vorschlag.

@@ -139,13 +139,7 @@ async function generate() {
     encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0 },
         new Float32Array(MAX_ROADS * ROAD_POINTS * 2), new Float32Array(MAX_ROADS * ROAD_POINTS), uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
-    const preEnc = device.createCommandEncoder();
-    const prePass = preEnc.beginComputePass();
-    prePass.setPipeline(pipeline);
-    prePass.setBindGroup(0, bind);
-    prePass.dispatchWorkgroups(PRE / 16, PRE / 16);
-    prePass.end();
-    queue.submit([preEnc.finish()]);
+    dispatch(PRE);
     const pre = await readBuffer(heightBuf, PRE * PRE * 4);
     for (let i = 0; i < pre.length; i++) terrain128[i] = pre[i] * params.maxH;
 
@@ -162,29 +156,27 @@ async function generate() {
     console.log(`Road network: ${nodes.filter(n => !n.exit).length} towns · ${nodes.filter(n => n.exit).length} exits · ${count} roads · ${(performance.now() - tr).toFixed(0)} ms`);
     encodeUniforms({ ...params, mapSize: MAP, res: RES, roadCount: count }, roads, levels, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
+    dispatch(RES);
+    // Kopien laufen in Submit-Reihenfolge nach dem Dispatch
+    [heights, roadMask] = await Promise.all([readBuffer(heightBuf, RES * RES * 4), readBuffer(roadMaskBuf, RES * RES * 4)]);
 
-    const bytes = RES * RES * 4;
-    const staging = device.createBuffer({
-        size: 2 * bytes,
-        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-    });
+    logStats(roads, levels, count);
+    computeSlope();
+    refreshView();
+    console.log(`Regeneration: ${(performance.now() - t0).toFixed(0)} ms`);
+}
+
+function dispatch(res) {
     const encoder = device.createCommandEncoder();
     const pass = encoder.beginComputePass();
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bind);
-    pass.dispatchWorkgroups(RES / 16, RES / 16);
+    pass.dispatchWorkgroups(res / 16, res / 16); // Workgroup 16×16 (→ .clinerules/projekt.md)
     pass.end();
-    encoder.copyBufferToBuffer(heightBuf, 0, staging, 0, bytes);
-    encoder.copyBufferToBuffer(roadMaskBuf, 0, staging, bytes, bytes);
     queue.submit([encoder.finish()]);
+}
 
-    await staging.mapAsync(GPUMapMode.READ);
-    const range = staging.getMappedRange();
-    heights = new Float32Array(range.slice(0, bytes));
-    roadMask = new Float32Array(range.slice(bytes, 2 * bytes));
-    staging.unmap();
-    staging.destroy();
-
+function logStats(roads, levels, count) {
     // Konsole-Check (→ Plan/Build.md M2 + M3)
     let mn = Infinity, mx = -Infinity, sum = 0, water = 0;
     let roadPx = 0, rMn = Infinity, rMx = -Infinity;
@@ -221,10 +213,6 @@ async function generate() {
     }
     if (nPts > 0)
         console.log(`Road level GPU vs. CPU: max Δ ${dMax.toFixed(2)} m · ${nOut}/${nPts} points outside ±${band.toFixed(1)} m`);
-
-    computeSlope();
-    refreshView();
-    console.log(`Regeneration: ${(performance.now() - t0).toFixed(0)} ms`);
 }
 
 // Preview + 3D-Mesh aus dem aktuellen Readback (auch bei reinem Farbwechsel, ohne Regeneration)
@@ -441,7 +429,15 @@ function applyPreset(overrides) {
 }
 // Save/Load als JSON: alle params außer maxH (automatisch) (→ Plan/SaveLoad.md)
 const SAVE_KEYS = Object.keys(params).filter(k => k !== 'maxH');
-const pickParams = obj => Object.fromEntries(SAVE_KEYS.filter(k => k in obj).map(k => [k, obj[k]]));
+// Fremde JSON (von Hand / aus der GUI kopiert): Schlüssel ohne Groß-/Kleinschreibung ("Seed"), Zahlen oft als
+// String → Typ vom Default erzwingen, sonst "45" + 10 = "4510" im Routing; Farbe mit '#'
+function pickParams(obj) {
+    const src = Object.fromEntries(Object.entries(obj).map(([k, v]) => [k.toLowerCase(), v]));
+    return Object.fromEntries(SAVE_KEYS.filter(k => k.toLowerCase() in src)
+        .map(k => [k, src[k.toLowerCase()]])
+        .map(([k, v]) => [k, typeof params[k] === 'number' ? Number(v) : String(v).replace(/^#?/, '#')])
+        .filter(([, v]) => !Number.isNaN(v)));
+}
 const fPreset = gui.addFolder('Presets');
 fPreset.add({ reset: () => applyPreset({}) }, 'reset').name('Defaults');
 for (const [name, p] of Object.entries(PRESETS)) fPreset.add({ apply: () => applyPreset(p) }, 'apply').name(name);
