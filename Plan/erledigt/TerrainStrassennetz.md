@@ -1,6 +1,6 @@
-# Plan: Terrain-Kalibrierung + Straßennetz
+﻿# Plan: Terrain-Kalibrierung + Straßennetz
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -88,7 +88,7 @@ Pässen im Rand-Ring. Löst `Plan/Roads.md` S4 ab.
   gleichbleibenden Abstand – Y-Einmündungen verjüngen sich; Glättung: 16 Nachbarn + gleitender
   Mittelwert statt Punkte je Länge; Browser gesammelt am Ende)
 - [x] N3 GUI + Doku — geprüft am 2026-09-11 (`rimAvoid` zusätzlich in „Rand-Ring“)
-- [ ] Browser-Abnahme T2–N3 (Böschung, Netz, Regeneration < 500 ms; Pässe abgelöst durch
+- [x] Browser-Abnahme T2–N3 (Böschung, Netz, Regeneration < 500 ms; Pässe abgelöst durch
   Plan/PresetsAusfahrten.md A1) → dann Plan nach erledigt/
 
 <!-- fertig: git mv Plan/TerrainStrassennetz.md Plan/erledigt/ -->

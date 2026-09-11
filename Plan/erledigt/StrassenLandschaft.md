@@ -1,6 +1,6 @@
-# Plan: Straßen liegen auf der Landschaft
+﻿# Plan: Straßen liegen auf der Landschaft
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -33,6 +33,6 @@ Abrisskanten nur, wo das Gelände es erzwingt, mal höher, mal flacher.
 ## Abgeschlossen
 - [x] R1 Toleranz + Defaults + Farbe — geprüft am 2026-09-11 (check grün; Browser gesammelt am Ende)
 - [x] R2 Wechselnder Böschungswinkel — geprüft am 2026-09-11 (check grün)
-- [ ] Browser-Abnahme R1 + R2 (kein Plateau, Kanten wechselnd, Farbe) → dann nach erledigt/
+- [x] Browser-Abnahme R1 + R2 (kein Plateau, Kanten wechselnd, Farbe) → dann nach erledigt/
 
 <!-- fertig: git mv Plan/StrassenLandschaft.md Plan/erledigt/ -->

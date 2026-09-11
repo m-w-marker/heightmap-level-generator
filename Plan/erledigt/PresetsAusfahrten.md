@@ -1,6 +1,6 @@
-# Plan: Ausfahrten am Ringfuß + Reset/Presets
+﻿# Plan: Ausfahrten am Ringfuß + Reset/Presets
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -32,6 +32,6 @@ Pass hindurchzuführen. Dazu ein Reset auf Standardwerte und Presets für typisc
 ## Abgeschlossen
 - [x] A1 Ausfahrten am Ringfuß — geprüft am 2026-09-11 (check grün; Browser gesammelt am Ende)
 - [x] A2 Reset + Presets — geprüft am 2026-09-11 (check grün)
-- [ ] Browser-Abnahme A1 + A2 (Ring geschlossen, Presets sehen nach ihrem Namen aus) → dann nach erledigt/
+- [x] Browser-Abnahme A1 + A2 (Ring geschlossen, Presets sehen nach ihrem Namen aus) → dann nach erledigt/
 
 <!-- fertig: git mv Plan/PresetsAusfahrten.md Plan/erledigt/ -->
