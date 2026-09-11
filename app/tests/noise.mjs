@@ -11,9 +11,9 @@ function vnoise(x, y, s) {
     return (top + (bot - top) * uy) * 2 - 1;
 }
 
-export function fbm(x, y, s, octaves) {
+export function fbm(x, y, s, octaves, gain = 0.5) {
     let v = 0, amp = 0.5, f = 1;
-    for (let i = 0; i < octaves; i++) { v += amp * vnoise(x * f, y * f, s + i * 17.31); f *= 2.03; amp *= 0.5; }
+    for (let i = 0; i < octaves; i++) { v += amp * vnoise(x * f, y * f, s + i * 17.31); f *= 2.03; amp *= gain; }
     return v;
 }
 

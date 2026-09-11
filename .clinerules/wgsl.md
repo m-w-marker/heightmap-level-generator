@@ -19,7 +19,7 @@ paths:
 2. Offset von Mitglied i+1 = `roundUp(Ende von i, Align(i+1))`.
 3. Nach einem Struct-Mitglied S liegt das nächste bei `≥ roundUp(16, Größe(S))`. naga rundet hier nicht auf, sondern meldet einen Fehler.
 
-Aktuell: `Params` = 24 × f32 = 96 B → `roads` ab Byte 96 = Float-Index 24; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0), Layout-Test `tests/uniforms.layout.mjs`.
+Aktuell: `Params` = 25 × f32 = 100 B → `roads` ab Byte 112 = Float-Index 28; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0), Layout-Test `tests/uniforms.layout.mjs`.
 
 ## Symptome
 Readback nur Nullen oder „road level Infinity“ → Shader-Modul abgelehnt (Browser-Konsole) oder Params-Reihenfolge JS ≠ WGSL

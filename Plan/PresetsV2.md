@@ -34,7 +34,7 @@ glatte vs. raue Hügel, natürlicherer Rand-Ring.
 
 ## Abgeschlossen
 - [x] P1 Farben — geprüft am 2026-09-11 (+ Fund: Vertex-Farben sRGB → linear, war Hauptgrund für „blass“)
-- [ ] P2 Terrain-Regler — geprüft am YYYY-MM-DD
+- [x] P2 Terrain-Regler — geprüft am 2026-09-11
 - [ ] P3 Presets abstimmen — geprüft am YYYY-MM-DD
 
 <!-- fertig: git mv Plan/PresetsV2.md Plan/erledigt/ -->

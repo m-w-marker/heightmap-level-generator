@@ -9,6 +9,7 @@ struct Params {
     baseLevel: f32,
     hillAmp: f32,
     hillScale: f32,
+    hillGain: f32,
     mountainAmp: f32,
     mountainScale: f32,
     maskScale: f32,
@@ -34,7 +35,7 @@ const ROAD_POINTS = 32u;
 
 const SLOPE_VAR_WAVE = 40.0; // m
 const SLOPE_MIN = 0.1745;    // 10° in rad
-const SLOPE_MAX = 1.3963;    // 80° in rad
+const SLOPE_MAX = 1.0472;    // 60° in rad (steiler → senkrechte Streifenwände im 512²-Mesh)
 
 // Punkt = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
@@ -66,16 +67,21 @@ fn vnoise(p2: vec2<f32>, seed: f32) -> f32 {
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 2.0 - 1.0;
 }
 
-fn fbm(p2: vec2<f32>, seed: f32, octaves: i32) -> f32 {
+// gain = Amplitudenfaktor je Oktave (Rauheit): klein = glatt rollend, groß = zerklüftet
+fn fbmGain(p2: vec2<f32>, seed: f32, octaves: i32, gain: f32) -> f32 {
     var v = 0.0;
     var amp = 0.5;
     var freq = 1.0;
     for (var i = 0i; i < octaves; i++) {
         v += amp * vnoise(p2 * freq, seed + f32(i) * 17.31);
         freq *= 2.03;
-        amp *= 0.5;
+        amp *= gain;
     }
     return v;
+}
+
+fn fbm(p2: vec2<f32>, seed: f32, octaves: i32) -> f32 {
+    return fbmGain(p2, seed, octaves, 0.5);
 }
 
 // Scharfe Kämme (Ridge-Noise) in [0, 1]
@@ -110,7 +116,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Amplituden, Schwellen und cliffWidth kommen auf der CPU normiert an (→ uniforms.js, Messwerte)
     // 1) Basisterain + Hügel
-    var h = u.params.baseLevel + fbm(w * u.params.hillScale, u.params.seed, 5) * u.params.hillAmp;
+    var h = u.params.baseLevel + fbmGain(w * u.params.hillScale, u.params.seed, 5, u.params.hillGain) * u.params.hillAmp;
 
     // 2) Berge: Cluster-Maske (Schwelle = Abdeckung, Weiche ±0.15 = MASK_SOFT) × Ridge
     let mMask = smoothstep(u.params.mountainThr - 0.15, u.params.mountainThr + 0.15, fbm(w * u.params.maskScale, u.params.seed + 101.3, 3));
@@ -143,7 +149,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // 5) Rand-Ring: Anhöhe Richtung Map-Kante, geschlossen (Horizont) — Ausfahrten enden am Ringfuß
     let edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * u.params.mapSize;
     let rimF = 1.0 - smoothstep(0.0, u.params.rimZone, edge);
-    h += rimF * (0.6 + 0.4 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp;
+    h += rimF * (0.55 + 0.6 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp; // ~30–80 %, keine gleichmäßige Wand
 
     // 6) Straßen — gewinnt über allem: Fahrbahn folgt dem Gelände im Band Level ± roadTolerance, daneben
     // Böschung mit fester Neigung (Gelände in einen Kegel um das Band geklemmt → Kante nur, wo das Gelände

@@ -46,6 +46,7 @@ const params = {
     baseLevel: 30,
     hillAmp: 8,
     hillWave: 120,
+    hillRoughness: 0.5, // Oktaven-Gain: 0.25 glatt rollend … 0.65 zerklüftet
     mountainAmp: 60,
     mountainWave: 180,
     clusterWave: 220,
@@ -429,6 +430,7 @@ addNum(gui.addFolder('Base'), 'baseLevel', 0, 60, 0.5);
 const fHuegel = gui.addFolder('Hills');
 addNum(fHuegel, 'hillAmp', 0, 30, 0.5);
 addNum(fHuegel, 'hillWave', 20, 400, 5);
+addNum(fHuegel, 'hillRoughness', 0.25, 0.65, 0.01);
 const fBerge = gui.addFolder('Mountains');
 addNum(fBerge, 'mountainAmp', 0, 150, 5);
 addNum(fBerge, 'mountainWave', 60, 500, 5);
