@@ -1,6 +1,6 @@
 # Plan: Einstellungen speichern / laden (JSON)
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -34,6 +34,6 @@ zum Preset-Button, damit gute Seeds im Repo landen.
 ## Abgeschlossen
 - [x] S1 Save/Load — geprüft am 2026-09-11 (headless: Download-Fallback 32 Schlüssel ohne maxH,
   Mountains → Save → Pasture → Load = gleiche Statistik)
-- [ ] S2 Datei-Presets — geprüft am
+- [x] S2 Datei-Presets — geprüft am 2026-09-11 (headless: Button „Favorite“ = Load derselben Datei)
 
 <!-- fertig: git mv Plan/SaveLoad.md Plan/erledigt/ -->

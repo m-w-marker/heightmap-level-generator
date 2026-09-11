@@ -444,6 +444,10 @@ const pickParams = obj => Object.fromEntries(SAVE_KEYS.filter(k => k in obj).map
 const fPreset = gui.addFolder('Presets');
 fPreset.add({ reset: () => applyPreset({}) }, 'reset').name('Defaults');
 for (const [name, p] of Object.entries(PRESETS)) fPreset.add({ apply: () => applyPreset(p) }, 'apply').name(name);
+// jede JSON in app/presets/ = eigener Button (Save-Format, → Plan/SaveLoad.md)
+const FILE_PRESETS = import.meta.glob('../presets/*.json', { eager: true, import: 'default' });
+for (const [path, p] of Object.entries(FILE_PRESETS))
+    fPreset.add({ apply: () => applyPreset(pickParams(p)) }, 'apply').name(path.slice(path.lastIndexOf('/') + 1, -'.json'.length));
 addNum(gui.addFolder('Base'), 'baseLevel', 0, 60, 0.5);
 const fHuegel = gui.addFolder('Hills');
 addNum(fHuegel, 'hillAmp', 0, 30, 0.5);
