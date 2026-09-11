@@ -70,6 +70,7 @@ const params = {
     roadColor: '#9a8462',
     levelSmoothing: 6, // m Radius des Level-Felds
     slopePenalty: 4,
+    roadMaxGrade: 12, // % max. Fahrbahn-Steigung (→ Plan/StrassenSteigung.md)
     waterAvoid: 2,
     townCount: 5,
     townSpacing: 80,
@@ -133,7 +134,7 @@ async function generate() {
     const t0 = performance.now();
     params.maxH = autoMaxH(params);
 
-    // Prepass: 128² Roh-Terrain (ohne Straßen, mit Rand-Ring → Routing meidet ihn über slopePenalty)
+    // Prepass: 128² Roh-Terrain (ohne Straßen, mit Rand-Ring; die Randzone sperrt das Routing selbst)
     // → Routing-Daten für roadgen (→ Plan/PresetsAusfahrten.md)
     encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0 },
         new Float32Array(MAX_ROADS * ROAD_POINTS * 2), new Float32Array(MAX_ROADS * ROAD_POINTS), uniformsData);
@@ -427,7 +428,7 @@ const PRESETS = {
         townCount: 4, townSpacing: 60, slopePenalty: 7, extraLinks: 1 },
     'Canyon / Plateaus': { baseLevel: 45, hillAmp: 3, hillRoughness: 0.35, mountainAmp: 0, mountainCoverage: 0,
         cliffDrop: 45, cliffWave: 120, cliffWidth: 8, cliffAreaWave: 220, cliffCoverage: 70, rimAmp: 30,
-        townCount: 5, slopePenalty: 5, roadSlopeVar: 10 },
+        townCount: 5, slopePenalty: 5, roadSlopeVar: 10, roadMaxGrade: 25 }, // 12 % → Rampen ~375 m je Klippe
     'Lakes': { baseLevel: 18.5, hillAmp: 6, hillWave: 110, hillRoughness: 0.35, mountainAmp: 15, mountainCoverage: 10,
         cliffDrop: 4, cliffCoverage: 5, waterLevel: 16, rimAmp: 30, townCount: 5, waterAvoid: 4 },
 };
@@ -478,6 +479,7 @@ addNum(fRoad, 'roadTolerance', 0, 3, 0.1);
 fRoad.addColor(params, 'roadColor').onChange(() => { setRoadColor(); refreshView(); });
 addNum(fRoad, 'levelSmoothing', 0, 40, 1);
 addNum(fRoad, 'slopePenalty', 0, 10, 0.5);
+addNum(fRoad, 'roadMaxGrade', 4, 30, 1);
 addNum(fRoad, 'waterAvoid', 0, 5, 0.5);
 addNum(fRoad, 'reuse', 0.1, 1, 0.05);
 const fRim = gui.addFolder('Border ring');

@@ -9,6 +9,7 @@ export const ROAD_POINTS = 32;
 const BAND_WIDTH = 12; // m neben einer Straße: teuer → spätere Straßen münden ein statt parallel zu laufen
 const BAND_AVOID = 3;  // Zusatzkosten pro m im Band
 const PATH_SMOOTH = 3; // Zellen Halbfenster gleitender Mittelwert (16-Nachbar-Pfad → Kurven statt Knicke)
+const GRADE_COST = 2;  // × len × (Steigung / roadMaxGrade − 1)² über dem Maximum (→ Plan/StrassenSteigung.md)
 
 // Deterministischer PRNG: gleicher Seed → gleiche Straßen
 function mulberry32(seed) {
@@ -104,6 +105,41 @@ function blurTerrain(terrain, r) {
     return { size: N, data: out };
 }
 
+// Level-Steigung ≤ g im ganzen Netz (die ersten n Punkte): Knoten = Polyline-Punkte, Kanten = Nachbarn derselben
+// Straße + Punkte fremder Straßen < NET_LINK m (dort überlappen Fahrbahnen; ohne Kopplung springt der Shader zwischen
+// verschiedenen Rampen → Sägezahn). Level = Mittel aus Abtrag- (größte Hülle ≤ Level) und Auftrag-Hülle (kleinste ≥),
+// erst mit 2g: an einem Sprung = Rampe mit Steigung g mittig darüber (Mittel der g-Hüllen: g/2 über doppelte Länge
+// → lange Dämme); dann mit g für lange steile Hänge, wo das 2g-Mittel steiler bleibt.
+const NET_LINK = 8;
+function limitGrade(points, levels, n, g) {
+    const links = Array.from({ length: n }, () => []);
+    const dist = (a, b) => Math.hypot(points[2 * a] - points[2 * b], points[2 * a + 1] - points[2 * b + 1]);
+    const link = (a, b, d) => { links[a].push(b, d); links[b].push(a, d); };
+    for (let a = 0; a < n; a++) {
+        if (a % ROAD_POINTS) link(a - 1, a, dist(a - 1, a));
+        for (let b = (Math.floor(a / ROAD_POINTS) + 1) * ROAD_POINTS; b < n; b++)
+            if (dist(a, b) < NET_LINK) link(a, b, dist(a, b));
+    }
+    const lvl = Float64Array.from(levels.subarray(0, n)); // Float64: Float32-Rundung könnte die Relaxation nie stabil werden lassen
+    for (const grade of [2 * g, g]) {
+        const cut = lvl.slice(), fill = lvl.slice();
+        // Relaxation bis stabil, abwechselnd vorwärts/rückwärts (exakte Hüllen, auf einer Linie = 2 Durchläufe)
+        for (let changed = true, pass = 0; changed; pass++) {
+            changed = false;
+            for (let j = 0; j < n; j++) {
+                const c = pass % 2 ? n - 1 - j : j, l = links[c];
+                for (let i = 0; i < l.length; i += 2) {
+                    const s = grade * l[i + 1];
+                    if (cut[l[i]] + s < cut[c]) { cut[c] = cut[l[i]] + s; changed = true; }
+                    if (fill[l[i]] - s > fill[c]) { fill[c] = fill[l[i]] - s; changed = true; }
+                }
+            }
+        }
+        for (let c = 0; c < n; c++) lvl[c] = (cut[c] + fill[c]) / 2;
+    }
+    levels.set(lvl);
+}
+
 // → { points (MAX_ROADS×ROAD_POINTS×2), levels (MAX_ROADS×ROAD_POINTS), count, nodes, edges }
 export function generateRoads(seed, mapSize, terrain, opts) {
     const net = planNetwork(seed, mapSize, terrain, opts);
@@ -139,12 +175,14 @@ export function generateRoads(seed, mapSize, terrain, opts) {
         pts.push(B.x, B.y);
         const res = resample(chaikin(smoothPath(pts, PATH_SMOOTH), 2), ROAD_POINTS);
         points.set(res, r * ROAD_POINTS * 2);
-        // Level nie unter Wasser: auch der tiefste Punkt des Toleranzbands (Level − roadTolerance) bleibt trocken
+        // Level nie unter Wasser: auch der tiefste Punkt des Toleranzbands (Level − roadTolerance) bleibt trocken;
+        // die Hüllen in limitGrade bleiben zwischen Min und Max → Wasser-Boden hält weiter
         for (let i = 0; i < ROAD_POINTS; i++) {
             const l = sampleTerrain(levelField, mapSize, res[2 * i], res[2 * i + 1]) + opts.roadOffset;
             levels[r * ROAD_POINTS + i] = Math.max(l, opts.waterLevel + opts.roadTolerance + 0.3);
         }
     });
+    limitGrade(points, levels, edges.length * ROAD_POINTS, opts.roadMaxGrade / 100);
     return { points, levels, count: edges.length, nodes: net.nodes, edges };
 }
 
@@ -235,11 +273,13 @@ function edgePoint(edge, t, mapSize) {
 }
 
 // Dijkstra 16-Nachbarn (inkl. Springer-Züge: 26,6°-Schritte statt 45°-Zickzack);
-// Kantenkosten = length + slopePenalty·|Δh| (+ waterAvoid·length unter waterLevel); Rand-Ring steckt im
-// Prepass-Gelände → wird über slopePenalty gemieden. Kostenfeld `field`: auf Straße × reuse, im Band daneben + BAND_AVOID·length.
+// Kantenkosten = length + slopePenalty·|Δh| (+ waterAvoid·length unter waterLevel) + GRADE_COST-Term über
+// roadMaxGrade (weich: Plateau ohne Lücke bleibt erreichbar); Randzone gesperrt (Ausfahrten liegen am Ringfuß),
+// sonst wird der Ring gegenüber Klippen zur billigen Rampe. Kostenfeld `field`: auf Straße × reuse, im Band daneben + BAND_AVOID·length.
 // Feste Nachbar-Reihenfolge + striktes < → deterministisch (→ Plan/Roads.md „Routing“)
 function dijkstra(terrain, mapSize, start, goal, opts, field) {
-    const N = terrain.size, h = terrain.data, cs = mapSize / N, nN = N * N;
+    const N = terrain.size, h = terrain.data, cs = mapSize / N, nN = N * N, gMax = opts.roadMaxGrade / 100;
+    const rimCells = Math.max(opts.rimZone / cs - 1.5, 0); // Zellzentrum tiefer als rimZone − cs in der Randzone; ≥ 0 = Map-Grenze
     const dist = new Float64Array(nN).fill(Infinity);
     const prev = new Int32Array(nN).fill(-1);
     // Min-Heap mit decrease-key (pos): jeder Knoten max. 1× im Heap → Größe ≤ nN (Arrays fix nN)
@@ -301,10 +341,12 @@ function dijkstra(terrain, mapSize, start, goal, opts, field) {
         const ux = u % N, uy = (u / N) | 0;
         for (let k = 0; k < NB.length; k++) {
             const x = ux + NB[k][0], y = uy + NB[k][1];
-            if (x < 0 || y < 0 || x >= N || y >= N) continue;
+            if (Math.min(x, y, N - 1 - x, N - 1 - y) < rimCells) continue;
             const v = y * N + x;
             const len = Math.hypot(NB[k][0], NB[k][1]) * cs;
-            let c = len + opts.slopePenalty * Math.abs(h[v] - h[u]);
+            const dh = Math.abs(h[v] - h[u]), over = dh / len / gMax - 1;
+            let c = len + opts.slopePenalty * dh;
+            if (over > 0) c += GRADE_COST * over * over * len;
             if (h[u] < opts.waterLevel || h[v] < opts.waterLevel) c += opts.waterAvoid * len;
             if (field[v] === 2) c *= opts.reuse;
             else if (field[v] === 1) c += BAND_AVOID * len;

@@ -6,7 +6,7 @@ const seed = 1337;
 const mapSize = 400;
 const N = 128;
 const opts = {
-    waterLevel: 15, roadOffset: 2, roadTolerance: 0.7, levelSmoothing: 12, slopePenalty: 5, waterAvoid: 2,
+    waterLevel: 15, roadOffset: 2, roadTolerance: 0.7, levelSmoothing: 12, slopePenalty: 5, waterAvoid: 2, roadMaxGrade: 12,
     rimZone: 45, townCount: 6, townSpacing: 70, exitCount: 3, extraLinks: 2, reuse: 0.4,
 };
 
@@ -127,6 +127,68 @@ for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
     let deepest = Infinity;
     for (let i = 0; i < res.count * ROAD_POINTS * 2; i += 2) deepest = Math.min(deepest, edgeDist(res.points[i], res.points[i + 1]));
     check(deepest >= opts.rimZone - 2, `Straßen bleiben aus dem Ring: min. Kantenabstand ${deepest.toFixed(1)} m ≥ ${opts.rimZone - 2} m`);
+}
+
+// Steigung (→ Plan/StrassenSteigung.md G1): Plateau 60 m (x < 200) | Ebene 20 m, Klippe 6 m breit; mit Lücke
+// = Rampe über 300 m um y = GAP_Y (13 %). Straßen queren die Klippenlinie in der Lücke; Level-Schritt ≤ Maximum,
+// auch ohne Lücke (Querung unvermeidbar → Rampe aus Abtrag + Auftrag)
+{
+    const GAP_Y = 280, GAP_CORE = 35, GAP_FADE = 40;
+    const cliffTerrain = gap => {
+        const data = new Float32Array(N * N);
+        for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+            const x = (i + 0.5) * mapSize / N, y = (j + 0.5) * mapSize / N;
+            const g = gap ? Math.min(Math.max(1 - (Math.abs(y - GAP_Y) - GAP_CORE) / GAP_FADE, 0), 1) : 0;
+            const w = 3 + 147 * g;
+            data[j * N + i] = 20 + 40 * Math.min(Math.max((200 + w - x) / (2 * w), 0), 1);
+        }
+        return { size: N, data };
+    };
+    const copts = { ...opts, rimZone: 20, exitCount: 0, townCount: 6, townSpacing: 70 };
+    const g = copts.roadMaxGrade / 100;
+    for (const gap of [true, false]) {
+        const res = generateRoads(seed, mapSize, cliffTerrain(gap), copts);
+        let crossings = 0, outside = 0, worst = 0;
+        for (let r = 0; r < res.count; r++) {
+            const pts = road(res, r), lv = res.levels.subarray(r * ROAD_POINTS, (r + 1) * ROAD_POINTS);
+            for (let i = 0; i + 1 < ROAD_POINTS; i++) {
+                const ax = pts[2 * i], bx = pts[2 * i + 2], ds = Math.hypot(bx - ax, pts[2 * i + 3] - pts[2 * i + 1]);
+                worst = Math.max(worst, Math.abs(lv[i + 1] - lv[i]) / Math.max(ds, 1e-6));
+                if ((ax - 200) * (bx - 200) < 0) {
+                    const y = pts[2 * i + 1] + (pts[2 * i + 3] - pts[2 * i + 1]) * (200 - ax) / (bx - ax);
+                    crossings++;
+                    if (Math.abs(y - GAP_Y) > GAP_CORE + GAP_FADE) outside++;
+                }
+            }
+        }
+        const name = gap ? 'Klippe mit Lücke' : 'Klippe ohne Lücke';
+        check(crossings > 0, `${name}: mind. eine Straße quert die Klippenlinie (${crossings})`);
+        if (gap) check(outside === 0, `${name}: ${outside}/${crossings} Querungen außerhalb der Lücke`);
+        check(worst <= g + 1e-4, `${name}: max. Level-Steigung ${(100 * worst).toFixed(1)} % ≤ ${copts.roadMaxGrade} %`);
+        // geteilte Rampe: fremde Straßenpunkte < 2 m entfernt → gleiches Level (sonst Sägezahn im Shader)
+        let jump = 0;
+        for (let r = 0; r < res.count; r++) for (let o = r + 1; o < res.count; o++) {
+            const p = road(res, r), q = road(res, o);
+            for (let i = 0; i < ROAD_POINTS; i++) for (let k = 0; k < ROAD_POINTS; k++)
+                if (Math.hypot(p[2 * i] - q[2 * k], p[2 * i + 1] - q[2 * k + 1]) < 2)
+                    jump = Math.max(jump, Math.abs(res.levels[r * ROAD_POINTS + i] - res.levels[o * ROAD_POINTS + k]));
+        }
+        check(jump <= 0.5, `${name}: Level fremder Straßen < 2 m entfernt: max Δ ${jump.toFixed(2)} m ≤ 0,5 m`);
+    }
+    // Rampe mittig und kurz: 40 m Sprung bei 30 % → je Seite H/(2g) ≈ 67 m (+ Glättung/Klippe); weiter weg Level =
+    // Gelände + Offset (Mittel der g-Hüllen allein: Dämme bis H/g = 133 m)
+    {
+        const sopts = { ...copts, roadMaxGrade: 30 }, reach = 40 / (2 * 0.3) + 20;
+        const res = generateRoads(seed, mapSize, cliffTerrain(false), sopts);
+        let far = 0, dev = 0;
+        for (let k = 0; k < res.count * ROAD_POINTS; k++) {
+            const x = res.points[2 * k];
+            if (Math.abs(x - 200) <= reach) continue;
+            far++;
+            dev = Math.max(dev, Math.abs(res.levels[k] - (x < 200 ? 60 : 20) - sopts.roadOffset));
+        }
+        check(far > 0 && dev <= 0.3, `Rampe mittig: ${far} Punkte > ${reach.toFixed(0)} m von der Klippe, max. Abweichung ${dev.toFixed(2)} m ≤ 0,3 m`);
+    }
 }
 
 // Netz-Planung (→ Plan/TerrainStrassennetz.md N1): Orte trocken/flach/außerhalb Randzone, Mindestabstand,
