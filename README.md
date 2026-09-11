@@ -20,8 +20,10 @@ tweak everything live and export the result as PNG.
 - **Cliffs, hills, mountains** — amplitudes in meters, coverage in % of the map
 - **Border ring** — closed raised terrain around the map edge that hides the horizon; exit roads end at its foot
 - **Auto height range** — `maxH` is derived from the settings, nothing gets clipped
+- **Compact panel** — toolbar (seed + random seed, preset list, save, load, export) and three tabs
+  (Terrain, Roads, World); readable labels with units, a tooltip per slider, rarely used ones under *Advanced*
 - **Presets** — Rolling hills, Pasture, Mountains, Canyon / Plateaus, Lakes, plus reset to defaults
-- **Save / Load** — all settings incl. seed as JSON; every JSON in `app/presets/` shows up as its own preset button
+- **Save / Load** — all settings incl. seed as JSON; every JSON in `app/presets/` shows up in the preset list
 - **Road color** — adjustable, recolors without regenerating
 - **Water level** — adjustable, shown in the preview
 - **2D map + 3D preview** — top-down heightmap and a lit 3D mesh (three.js)
@@ -42,23 +44,23 @@ Open http://localhost:5173 (on Windows, `start.bat` does both).
 ## Saving settings
 
 **Save** writes all parameters including the seed as JSON (Chrome/Edge open a save dialog, other browsers
-download the file). **Load** reads such a file back. Put a JSON into `app/presets/` and it appears as a preset
-button — `Favorite.json` is an example.
+download the file). **Load** reads such a file back. Put a JSON into `app/presets/` and it appears in the
+preset list — `Favorite.json` is an example.
 
 ## Parameters
 
 All distances are in meters (1 unit = 1 m), coverages in % of the map, `roadSlope` in degrees, `roadMaxGrade` in %.
+The panel shows readable labels; hover a slider to see its JSON key (used in saved files). *Advanced* entries in italics.
 
-| Group | Parameters |
-|---|---|
-| Base | `baseLevel` |
-| Hills | `hillAmp`, `hillWave`, `hillRoughness` |
-| Mountains | `mountainAmp`, `mountainWave`, `clusterWave`, `mountainCoverage` |
-| Cliffs | `cliffDrop`, `cliffWave`, `cliffWidth`, `cliffAreaWave`, `cliffCoverage` |
-| Road network | `townCount`, `townSpacing`, `exitCount`, `extraLinks`, `reuse`, `slopePenalty`, `roadMaxGrade`, `waterAvoid` |
-| Road edges | `roadWidth`, `roadSlope`, `roadSlopeVar`, `roadOffset`, `roadTolerance`, `levelSmoothing`, `roadColor` |
-| Border ring | `rimAmp`, `rimZone`, `rimWave` |
-| Global | `maxH` (auto), `waterLevel` |
+| Tab | Group | Parameters |
+|---|---|---|
+| Terrain | Hills | `hillAmp`, `hillWave`, *`hillRoughness`* |
+| | Mountains | `mountainAmp`, `mountainCoverage`, *`mountainWave`*, *`clusterWave`* |
+| | Cliffs | `cliffDrop`, `cliffCoverage`, *`cliffWave`*, *`cliffWidth`*, *`cliffAreaWave`* |
+| Roads | Road network | `townCount`, `exitCount`, `extraLinks`, `roadMaxGrade`, *`townSpacing`*, *`reuse`*, *`slopePenalty`*, *`waterAvoid`* |
+| | Road edges | `roadWidth`, `roadSlope`, `roadSlopeVar`, `roadTolerance`, `levelSmoothing`, `roadOffset`, `roadColor` |
+| World | Water & ground | `waterLevel`, `baseLevel`, `maxH` (auto) |
+| | Border ring | `rimAmp`, `rimZone`, *`rimWave`* |
 
 ## How it works
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GUI } from 'lil-gui';
+import { buildPanel } from './ui.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, ROADS_OFFSET, autoMaxH } from './uniforms.js';
@@ -78,6 +78,7 @@ const params = {
     extraLinks: 2,
     reuse: 0.4,
 };
+const DEFAULTS = { ...params }; // Basis jedes Presets
 
 const uniformsData = new Float32Array(ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS);
 
@@ -396,15 +397,7 @@ async function runGenerate() {
     }
 }
 
-function addNum(folder, key, min, max, step) {
-    folder.add(params, key).min(min).max(max).step(step).name(key).onChange(scheduleGenerate);
-}
-
-const gui = new GUI({ title: 'Terrain' });
-gui.add(params, 'seed').min(1).max(99999).step(1).name('Seed').onChange(scheduleGenerate);
-
-// Presets = Standardwerte (gui.reset(), inkl. Seed) + Overrides (→ Plan/PresetsAusfahrten.md).
-// Buttons statt Dropdown: ein Dropdown würde von gui.reset() mitgesetzt → onChange-Schleife.
+// Presets = Startwerte (inkl. Seed) + Overrides (→ Plan/PresetsAusfahrten.md, Plan/UI.md)
 const PRESETS = {
     'Rolling hills': { hillAmp: 9, hillWave: 90, hillRoughness: 0.35, mountainAmp: 25, mountainWave: 200, clusterWave: 250,
         mountainCoverage: 25, cliffDrop: 5, cliffWidth: 20, cliffCoverage: 10, rimAmp: 35, rimZone: 60,
@@ -421,10 +414,9 @@ const PRESETS = {
         cliffDrop: 4, cliffCoverage: 5, waterLevel: 16, rimAmp: 30, townCount: 5, waterAvoid: 4 },
 };
 function applyPreset(overrides) {
-    gui.reset();
-    Object.assign(params, overrides);
+    Object.assign(params, DEFAULTS, overrides);
     setRoadColor();
-    gui.controllersRecursive().forEach(c => c.updateDisplay());
+    panel.refresh();
     scheduleGenerate();
 }
 // Save/Load als JSON: alle params außer maxH (automatisch) (→ Plan/SaveLoad.md)
@@ -438,59 +430,23 @@ function pickParams(obj) {
         .map(([k, v]) => [k, typeof params[k] === 'number' ? Number(v) : String(v).replace(/^#?/, '#')])
         .filter(([, v]) => !Number.isNaN(v)));
 }
-const fPreset = gui.addFolder('Presets');
-fPreset.add({ reset: () => applyPreset({}) }, 'reset').name('Defaults');
-for (const [name, p] of Object.entries(PRESETS)) fPreset.add({ apply: () => applyPreset(p) }, 'apply').name(name);
-// jede JSON in app/presets/ = eigener Button (Save-Format, → Plan/SaveLoad.md)
+// jede JSON in app/presets/ = eigener Eintrag (Save-Format, → Plan/SaveLoad.md)
+const ALL_PRESETS = { Defaults: {}, ...PRESETS };
 const FILE_PRESETS = import.meta.glob('../presets/*.json', { eager: true, import: 'default' });
 for (const [path, p] of Object.entries(FILE_PRESETS))
-    fPreset.add({ apply: () => applyPreset(pickParams(p)) }, 'apply').name(path.slice(path.lastIndexOf('/') + 1, -'.json'.length));
-addNum(gui.addFolder('Base'), 'baseLevel', 0, 60, 0.5);
-const fHuegel = gui.addFolder('Hills');
-addNum(fHuegel, 'hillAmp', 0, 30, 0.5);
-addNum(fHuegel, 'hillWave', 20, 400, 5);
-addNum(fHuegel, 'hillRoughness', 0.25, 0.65, 0.01);
-const fBerge = gui.addFolder('Mountains');
-addNum(fBerge, 'mountainAmp', 0, 150, 5);
-addNum(fBerge, 'mountainWave', 60, 500, 5);
-addNum(fBerge, 'clusterWave', 60, 500, 5);
-addNum(fBerge, 'mountainCoverage', 0, 100, 1);
-const fCliff = gui.addFolder('Cliffs');
-addNum(fCliff, 'cliffDrop', 0, 60, 0.5);
-addNum(fCliff, 'cliffWave', 20, 300, 5);
-addNum(fCliff, 'cliffWidth', 2, 60, 0.5);
-addNum(fCliff, 'cliffAreaWave', 40, 400, 5);
-addNum(fCliff, 'cliffCoverage', 0, 100, 1);
-// Straßen nach Zweck: wo sie verlaufen vs. wie der Rand aussieht (→ Plan/Schleifen.md)
-const fNet = gui.addFolder('Road network');
-// Maxima so, dass MST + Zusatz + Ausfahrten ≤ MAX_ROADS: (8 − 1) + 4 + 4 = 15
-addNum(fNet, 'townCount', 1, 8, 1);
-addNum(fNet, 'townSpacing', 30, 150, 5);
-addNum(fNet, 'exitCount', 0, 4, 1);
-addNum(fNet, 'extraLinks', 0, 4, 1);
-addNum(fNet, 'reuse', 0.1, 1, 0.05);
-addNum(fNet, 'slopePenalty', 0, 10, 0.5);
-addNum(fNet, 'roadMaxGrade', 4, 30, 1);
-addNum(fNet, 'waterAvoid', 0, 5, 0.5);
-const fEdge = gui.addFolder('Road edges');
-addNum(fEdge, 'roadWidth', 1, 5, 0.5);
-addNum(fEdge, 'roadSlope', 15, 60, 1);
-addNum(fEdge, 'roadSlopeVar', 0, 30, 1);
-addNum(fEdge, 'roadOffset', -2, 3, 0.1);
-addNum(fEdge, 'roadTolerance', 0, 3, 0.1);
-addNum(fEdge, 'levelSmoothing', 0, 40, 1);
-fEdge.addColor(params, 'roadColor').onChange(() => { setRoadColor(); refreshView(); });
-const fRim = gui.addFolder('Border ring');
-addNum(fRim, 'rimAmp', 0, 100, 1);
-addNum(fRim, 'rimZone', 10, 150, 5);
-addNum(fRim, 'rimWave', 20, 300, 5);
-const fGlobal = gui.addFolder('Global');
-fGlobal.add(params, 'maxH').name('maxH (auto)').disable().listen();
-addNum(fGlobal, 'waterLevel', 0, 50, 0.5);
-gui.add({ regenerate: runGenerate }, 'regenerate').name('Regenerate');
-gui.add({ exportPng }, 'exportPng').name('Export PNG');
-gui.add({ saveSettings }, 'saveSettings').name('Save');
-gui.add({ load: () => loadInput.click() }, 'load').name('Load');
+    ALL_PRESETS[path.slice(path.lastIndexOf('/') + 1, -'.json'.length)] = pickParams(p);
+
+const panel = buildPanel(params, {
+    change: scheduleGenerate,
+    color: () => { setRoadColor(); refreshView(); },
+    presets: Object.keys(ALL_PRESETS),
+    preset: name => applyPreset(ALL_PRESETS[name]),
+    save: saveSettings,
+    load: () => loadInput.click(),
+    exports: { 'Heightmap PNG (8-bit)': exportPng },
+    regenerate: runGenerate,
+});
+panel.guis.World.add(params, 'maxH').name('Max height (auto, m)').decimals(1).disable().listen();
 
 function download(blob, name) {
     const a = document.createElement('a');
