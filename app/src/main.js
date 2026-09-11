@@ -98,8 +98,48 @@ const bind = device.createBindGroup({
 let heights = new Float32Array(RES * RES);
 let roadMask = new Float32Array(RES * RES);
 
+const PRE = 128; // Prepass-Auflösung für das CPU-Routing (→ Plan/Roads.md)
+
+// Readback: Staging MAP_READ + copyBufferToBuffer + mapAsync (→ .clinerules/wgsl.md)
+async function readBuffer(buf, bytes) {
+    const staging = device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const encoder = device.createCommandEncoder();
+    encoder.copyBufferToBuffer(buf, 0, staging, 0, bytes);
+    queue.submit([encoder.finish()]);
+    await staging.mapAsync(GPUMapMode.READ);
+    const out = new Float32Array(staging.getMappedRange().slice(0));
+    staging.unmap();
+    staging.destroy();
+    return out;
+}
+
+let terrain128 = new Float32Array(PRE * PRE);
+
 async function generate() {
     const t0 = performance.now();
+
+    // Prepass: 128² Roh-Terrain (ohne Straßen) → Routing-Daten für roadgen (→ Plan/Roads.md)
+    encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0 },
+        new Float32Array(MAX_ROADS * ROAD_POINTS * 2), uniformsData);
+    queue.writeBuffer(uniformsBuf, 0, uniformsData);
+    const preEnc = device.createCommandEncoder();
+    const prePass = preEnc.beginComputePass();
+    prePass.setPipeline(pipeline);
+    prePass.setBindGroup(0, bind);
+    prePass.dispatchWorkgroups(PRE / 16, PRE / 16);
+    prePass.end();
+    queue.submit([preEnc.finish()]);
+    terrain128.set(await readBuffer(heightBuf, PRE * PRE * 4));
+
+    // Prepass-Konsole-Check (→ Plan/Roads.md S1): Min/Max ≈ Final-Pass
+    let pMn = Infinity, pMx = -Infinity;
+    for (let i = 0; i < terrain128.length; i++) {
+        const h = terrain128[i] * params.maxH;
+        if (h < pMn) pMn = h;
+        if (h > pMx) pMx = h;
+    }
+    console.log(`Prepass 128²: min ${pMn.toFixed(1)} m · max ${pMx.toFixed(1)} m`);
+
     const roads = generateRoads(params.seed, MAP, params.roadCount);
     encodeUniforms({ ...params, mapSize: MAP, res: RES }, roads, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
