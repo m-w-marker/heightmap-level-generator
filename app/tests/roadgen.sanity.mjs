@@ -99,6 +99,25 @@ for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
     check(par <= 0.05 * total, `${name}: ${par}/${total} Punkte im Parallelband (≤ 5 %)`);
 }
 
+// Echte Schleifen (→ Plan/Schleifen.md): Zusatzstraßen entstehen und laufen abseits der Orte (> 25 m)
+// höchstens zu 30 % auf fremder Trasse (< 5 m) — sonst sind sie unsichtbar
+for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
+    check(res.extra > 0, `${name}: ${res.extra} Zusatzstraßen`);
+    for (let r = res.mst; r < res.mst + res.extra; r++) {
+        const pts = road(res, r);
+        let n = 0, on = 0;
+        for (let i = 0; i < pts.length; i += 2) {
+            const x = pts[i], y = pts[i + 1];
+            if (res.nodes.some(v => Math.hypot(v.x - x, v.y - y) < 25)) continue;
+            n++;
+            let dmin = Infinity;
+            for (let o = 0; o < res.count; o++) if (o !== r) dmin = Math.min(dmin, distToRoad(road(res, o), x, y));
+            if (dmin < 5) on++;
+        }
+        check(on <= 0.3 * n, `${name}: Zusatzstraße ${r}: ${on}/${n} Punkte auf fremder Trasse (≤ 30 %)`);
+    }
+}
+
 // Level an gleicher Stelle gleich (geglättetes Feld statt Mittel entlang der Polyline)
 {
     let worst = 0;

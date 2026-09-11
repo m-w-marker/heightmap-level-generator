@@ -140,7 +140,7 @@ function limitGrade(points, levels, n, g) {
     levels.set(lvl);
 }
 
-// → { points (MAX_ROADS×ROAD_POINTS×2), levels (MAX_ROADS×ROAD_POINTS), count, nodes, edges }
+// → { points (MAX_ROADS×ROAD_POINTS×2), levels (MAX_ROADS×ROAD_POINTS), count, nodes, edges, mst, extra }
 export function generateRoads(seed, mapSize, terrain, opts) {
     const net = planNetwork(seed, mapSize, terrain, opts);
     const edges = net.edges.slice(0, MAX_ROADS);
@@ -153,7 +153,10 @@ export function generateRoads(seed, mapSize, terrain, opts) {
     const levelField = blurTerrain(terrain, Math.round(opts.levelSmoothing / cs));
     edges.forEach(([ia, ib], r) => {
         const A = net.nodes[ia], B = net.nodes[ib];
-        const path = dijkstra(terrain, mapSize, cellX(A.x) + cellX(A.y) * N, cellX(B.x) + cellX(B.y) * N, opts, field);
+        // Zusatzkante ohne reuse-Rabatt: sonst ist der Umweg auf vorhandener Straße billiger als die neue Trasse
+        const extra = r >= net.mst && r < net.mst + net.extra;
+        const path = dijkstra(terrain, mapSize, cellX(A.x) + cellX(A.y) * N, cellX(B.x) + cellX(B.y) * N,
+            extra ? { ...opts, reuse: 1 } : opts, field);
         for (const c of path) {
             const cx = c % N, cy = (c / N) | 0;
             for (let y = Math.max(cy - band, 0); y <= Math.min(cy + band, N - 1); y++)
@@ -183,17 +186,19 @@ export function generateRoads(seed, mapSize, terrain, opts) {
         }
     });
     limitGrade(points, levels, edges.length * ROAD_POINTS, opts.roadMaxGrade / 100);
-    return { points, levels, count: edges.length, nodes: net.nodes, edges };
+    return { points, levels, count: edges.length, nodes: net.nodes, edges, mst: net.mst, extra: net.extra };
 }
 
 // Netz-Knoten + Kanten (→ Plan/TerrainStrassennetz.md N1)
 const TOWN_CANDIDATES = 256;
 const TOWN_PROBE = 10; // m: 3×3-Probe im Abstand → Höhenspanne = Flachheit der Ortsfläche
 const MIN_LINK_ANGLE = 35 * Math.PI / 180; // Zusatzkanten nicht fast parallel zu vorhandenen
+const MIN_DETOUR = 1.4; // Zusatzkante nur, wenn der Weg übers Netz so viel länger ist (→ Plan/Schleifen.md)
 
 // Orte: flach + trocken + außerhalb Randzone, gierig (flachste zuerst) mit Mindestabstand.
-// Ausfahrten: gleichmäßig über den Umfang verteilt, am Ringfuß. Kanten: MST über Orte + extraLinks kürzeste
-// Zusatzkanten (Winkelcheck) + jede Ausfahrt → nächster Ort. → { nodes: [{x, y, exit}], edges: [[a, b]] }
+// Ausfahrten: gleichmäßig über den Umfang verteilt, am Ringfuß. Kanten: MST über Orte + extraLinks Zusatzkanten
+// (Umweg, Winkelcheck) + jede Ausfahrt → nächster Ort.
+// → { nodes: [{x, y, exit}], edges: [[a, b]], mst, extra } (edges = mst MST-Kanten, dann extra Zusatzkanten, dann Ausfahrten)
 export function planNetwork(seed, mapSize, terrain, opts) {
     const rand = mulberry32(seed ^ 0x9e3779b9);
     const nodes = placeTowns(rand, mapSize, terrain, opts);
@@ -206,7 +211,7 @@ export function planNetwork(seed, mapSize, terrain, opts) {
         const [x, y] = edgePoint(Math.floor(s), Math.min(Math.max(s % 1, 0.1), 0.9), mapSize - 2 * opts.rimZone);
         nodes.push({ x: x + opts.rimZone, y: y + opts.rimZone, exit: true });
     }
-    return { nodes, edges: linkNetwork(nodes, nT, opts.extraLinks) };
+    return { nodes, ...linkNetwork(nodes, nT, opts.extraLinks) };
 }
 
 function placeTowns(rand, mapSize, terrain, opts) {
@@ -247,7 +252,8 @@ function linkNetwork(nodes, nT, extraLinks) {
         inTree[best[1]] = true;
         edges.push(best);
     }
-    // Zusatzkanten für Schleifen: kürzeste zuerst, Winkel ≥ MIN_LINK_ANGLE zu allen Kanten an beiden Enden
+    // Zusatzkanten für Schleifen: nur Ortspaare mit Weg übers Netz ≥ MIN_DETOUR × Luftlinie (sonst läuft die
+    // „Schleife“ auf vorhandener Straße), kürzeste zuerst, Winkel ≥ MIN_LINK_ANGLE zu allen Kanten an beiden Enden
     const dir = (a, b) => Math.atan2(nodes[b].y - nodes[a].y, nodes[b].x - nodes[a].x);
     const angleOk = (a, b) => edges.every(([p, q]) => {
         const o = p === a ? q : q === a ? p : -1;
@@ -255,7 +261,7 @@ function linkNetwork(nodes, nT, extraLinks) {
         const diff = Math.abs(((dir(a, b) - dir(a, o)) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI);
         return diff >= MIN_LINK_ANGLE;
     });
-    const pairs = [];
+    const mst = edges.length, pairs = [];
     for (let i = 0; i < nT; i++) for (let j = i + 1; j < nT; j++) {
         if (!edges.some(([p, q]) => (p === i && q === j) || (p === j && q === i))) pairs.push([i, j]);
     }
@@ -263,7 +269,7 @@ function linkNetwork(nodes, nT, extraLinks) {
     let extra = 0;
     for (const [i, j] of pairs) {
         if (extra >= extraLinks) break;
-        if (angleOk(i, j) && angleOk(j, i)) { edges.push([i, j]); extra++; }
+        if (netDist(edges, nT, d)[i][j] >= MIN_DETOUR * d(i, j) && angleOk(i, j) && angleOk(j, i)) { edges.push([i, j]); extra++; }
     }
     // Ausfahrt → nächster Ort
     for (let e = nT; e < nodes.length && nT > 0; e++) {
@@ -271,7 +277,16 @@ function linkNetwork(nodes, nT, extraLinks) {
         for (let t = 1; t < nT; t++) if (d(e, t) < d(e, best)) best = t;
         edges.push([e, best]);
     }
-    return edges;
+    return { edges, mst, extra };
+}
+
+// Weg übers Netz (Luftlinien der Kanten) zwischen allen Orten, Floyd-Warshall (≤ 8 Orte)
+function netDist(edges, nT, d) {
+    const D = Array.from({ length: nT }, (_, i) => Array.from({ length: nT }, (_, j) => (i === j ? 0 : Infinity)));
+    for (const [a, b] of edges) if (a < nT && b < nT) D[a][b] = D[b][a] = d(a, b);
+    for (let k = 0; k < nT; k++) for (let i = 0; i < nT; i++) for (let j = 0; j < nT; j++)
+        if (D[i][k] + D[k][j] < D[i][j]) D[i][j] = D[i][k] + D[k][j];
+    return D;
 }
 
 function edgePoint(edge, t, mapSize) {
