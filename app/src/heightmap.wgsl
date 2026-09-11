@@ -147,8 +147,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     // 5) Rand-Ring: Anhöhe Richtung Map-Kante, geschlossen (Horizont) — Ausfahrten enden am Ringfuß
-    let edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * u.params.mapSize;
-    let rimF = 1.0 - smoothstep(0.0, u.params.rimZone, edge);
+    // Abstand hinter das um rimZone eingerückte Quadrat (Ecken rund statt min()-Diagonalknick)
+    let half = 0.5 * u.params.mapSize;
+    let beyond = length(max(abs(w - half) - (half - u.params.rimZone), vec2<f32>(0.0)));
+    let rimF = smoothstep(0.0, u.params.rimZone, beyond);
     h += rimF * (0.55 + 0.6 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp; // ~30–80 %, keine gleichmäßige Wand
 
     // 6) Straßen — gewinnt über allem: Fahrbahn folgt dem Gelände im Band Level ± roadTolerance, daneben

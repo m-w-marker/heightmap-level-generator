@@ -32,9 +32,10 @@ controls.maxPolarAngle = Math.PI / 2 - 0.05;
 controls.minDistance = 40;
 controls.maxDistance = 1200;
 
-scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x3a4a33, 1.1));
-const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
-sun.position.set(180, 260, 120);
+// Sonne ≈ 30° hoch + schwächeres Himmelslicht → Relief auch bei flachen Hügeln lesbar
+scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x3a4a33, 0.7));
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.8);
+sun.position.set(220, 150, 120);
 scene.add(sun);
 
 // --- M2: Compute-Pipeline + 2D-Preview (→ Plan/Build.md M2) ---
@@ -253,6 +254,7 @@ const STOPS = [
 ];
 const ROCK = [110, 102, 92];
 const ROCK_SLOPE = [0.7, 1.2]; // Hangneigung (m/m ≈ 35°–50°) → Überblendung zu Fels
+const RELIEF_TINT = 0.06;      // Helligkeit pro m Kuppe/Mulde (±15 % max)
 
 // '#rrggbb' → [r, g, b] 0–255, gecacht: terrainColor läuft 1M× pro Bild
 let roadRGB = [0, 0, 0];
@@ -263,7 +265,7 @@ function setRoadColor() {
 setRoadColor();
 
 // schreibt 0–255-Werte (→ Plan/Build.md Datenfluss)
-function terrainColor(out, o, hm, m, s) {
+function terrainColor(out, o, hm, m, s, rel) {
     let r, g, b;
     if (hm < params.waterLevel) {
         const t = hm / params.waterLevel;
@@ -284,6 +286,10 @@ function terrainColor(out, o, hm, m, s) {
         r += (ROCK[0] - r) * k;
         g += (ROCK[1] - g) * k;
         b += (ROCK[2] - b) * k;
+        const lit = 1 + Math.min(Math.max(rel * RELIEF_TINT, -0.15), 0.15);
+        r *= lit;
+        g *= lit;
+        b *= lit;
     }
     if (m > 0.5) {
         const f = (m - 0.5) * 2; // weiche Fahrbahnkante
@@ -296,23 +302,28 @@ function terrainColor(out, o, hm, m, s) {
     out[o + 2] = b;
 }
 
-// Hangneigung |∇h| in m/m aus dem Readback (zentrale Differenzen, Kanten geclamped) — einmal pro Regeneration
+// Aus dem Readback, einmal pro Regeneration (Kanten geclamped):
+// slope = Hangneigung |∇h| in m/m (zentrale Differenzen); relief = Höhe − Mittel im Abstand RELIEF_R in m
+// (> 0 Kuppe, < 0 Mulde) → Farbe heller/dunkler, macht flache Hügel lesbar
+const RELIEF_R = 24; // px ≈ 9 m
 let slope = new Float32Array(RES * RES);
+let relief = new Float32Array(RES * RES);
 function computeSlope() {
-    const px = MAP / RES, k = params.maxH / (2 * px);
+    const px = MAP / RES, k = params.maxH / (2 * px), H = params.maxH;
+    const at = (x, y) => heights[Math.min(Math.max(y, 0), RES - 1) * RES + Math.min(Math.max(x, 0), RES - 1)];
     for (let y = 0; y < RES; y++) for (let x = 0; x < RES; x++) {
-        const xl = Math.max(x - 1, 0), xr = Math.min(x + 1, RES - 1);
-        const yu = Math.max(y - 1, 0), yd = Math.min(y + 1, RES - 1);
-        const gx = (heights[y * RES + xr] - heights[y * RES + xl]) * k;
-        const gy = (heights[yd * RES + x] - heights[yu * RES + x]) * k;
+        const gx = (at(x + 1, y) - at(x - 1, y)) * k;
+        const gy = (at(x, y + 1) - at(x, y - 1)) * k;
         slope[y * RES + x] = Math.hypot(gx, gy);
+        const avg = (at(x - RELIEF_R, y) + at(x + RELIEF_R, y) + at(x, y - RELIEF_R) + at(x, y + RELIEF_R)) / 4;
+        relief[y * RES + x] = (at(x, y) - avg) * H;
     }
 }
 
 function updatePreview() {
     const d = pimg.data;
     for (let i = 0; i < RES * RES; i++) {
-        terrainColor(d, i * 4, heights[i] * params.maxH, roadMask[i], slope[i]);
+        terrainColor(d, i * 4, heights[i] * params.maxH, roadMask[i], slope[i], relief[i]);
         d[i * 4 + 3] = 255;
     }
     pctx.putImageData(pimg, 0, 0);
@@ -350,7 +361,7 @@ function buildTerrainMesh() {
             pos[o] = -MAP / 2 + u * MAP;
             pos[o + 1] = sampleBilinear(heights, u, v) * params.maxH;
             pos[o + 2] = -MAP / 2 + v * MAP;
-            terrainColor(col, o, pos[o + 1], sampleBilinear(roadMask, u, v), sampleBilinear(slope, u, v));
+            terrainColor(col, o, pos[o + 1], sampleBilinear(roadMask, u, v), sampleBilinear(slope, u, v), sampleBilinear(relief, u, v));
             // Vertex-Farben liest three als linear → sRGB-Rampe umrechnen, sonst doppelt aufgehellt (blass)
             col[o] = srgbToLinear(col[o] / 255);
             col[o + 1] = srgbToLinear(col[o + 1] / 255);
@@ -406,16 +417,19 @@ gui.add(params, 'seed').min(1).max(99999).step(1).name('Seed').onChange(schedule
 // Presets = Standardwerte (gui.reset(), inkl. Seed) + Overrides (→ Plan/PresetsAusfahrten.md).
 // Buttons statt Dropdown: ein Dropdown würde von gui.reset() mitgesetzt → onChange-Schleife.
 const PRESETS = {
-    'Rolling hills': { hillAmp: 12, hillWave: 100, mountainAmp: 25, mountainCoverage: 20, cliffDrop: 8, cliffCoverage: 5,
-        townCount: 7, townSpacing: 60, extraLinks: 3 },
-    'Pasture': { hillAmp: 4, hillWave: 160, mountainAmp: 0, mountainCoverage: 0, cliffDrop: 0, cliffCoverage: 0,
-        townCount: 4, townSpacing: 90, extraLinks: 1 },
-    'Mountains': { baseLevel: 25, hillAmp: 10, mountainAmp: 110, mountainWave: 150, clusterWave: 180, mountainCoverage: 60,
-        cliffDrop: 25, cliffCoverage: 20, rimAmp: 60, townCount: 4, townSpacing: 70, slopePenalty: 6, extraLinks: 1 },
-    'Canyon / Plateaus': { hillAmp: 3, mountainAmp: 20, mountainCoverage: 10, cliffDrop: 45, cliffWave: 110, cliffWidth: 6,
-        cliffAreaWave: 200, cliffCoverage: 70, townCount: 5, slopePenalty: 6 },
-    'Lakes': { baseLevel: 18.5, hillAmp: 6, hillWave: 90, mountainAmp: 15, mountainCoverage: 10, cliffDrop: 6,
-        cliffCoverage: 5, waterLevel: 16, townCount: 5, waterAvoid: 4 },
+    'Rolling hills': { hillAmp: 9, hillWave: 90, hillRoughness: 0.35, mountainAmp: 25, mountainWave: 200, clusterWave: 250,
+        mountainCoverage: 25, cliffDrop: 5, cliffWidth: 20, cliffCoverage: 10, rimAmp: 35, rimZone: 60,
+        townCount: 6, townSpacing: 70, extraLinks: 3, roadSlopeVar: 15 },
+    'Pasture': { baseLevel: 25, hillAmp: 4, hillWave: 100, hillRoughness: 0.3, mountainAmp: 0, mountainCoverage: 0,
+        cliffDrop: 0, cliffCoverage: 0, rimAmp: 25, rimZone: 70, rimWave: 120, townCount: 4, townSpacing: 90, extraLinks: 1 },
+    'Mountains': { baseLevel: 25, hillAmp: 12, hillRoughness: 0.6, mountainAmp: 120, mountainWave: 200, clusterWave: 260,
+        mountainCoverage: 45, cliffDrop: 15, cliffCoverage: 15, rimAmp: 70, rimZone: 60,
+        townCount: 4, townSpacing: 60, slopePenalty: 7, extraLinks: 1 },
+    'Canyon / Plateaus': { baseLevel: 45, hillAmp: 3, hillRoughness: 0.35, mountainAmp: 0, mountainCoverage: 0,
+        cliffDrop: 45, cliffWave: 120, cliffWidth: 8, cliffAreaWave: 220, cliffCoverage: 70, rimAmp: 30,
+        townCount: 5, slopePenalty: 5, roadSlopeVar: 10 },
+    'Lakes': { baseLevel: 18.5, hillAmp: 6, hillWave: 110, hillRoughness: 0.35, mountainAmp: 15, mountainCoverage: 10,
+        cliffDrop: 4, cliffCoverage: 5, waterLevel: 16, rimAmp: 30, townCount: 5, waterAvoid: 4 },
 };
 function applyPreset(overrides) {
     gui.reset();

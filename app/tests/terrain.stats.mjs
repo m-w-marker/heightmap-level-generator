@@ -43,8 +43,9 @@ function maxHeight(p) {
             const cm = smoothstep(u.cliffThr - 0.15, u.cliffThr + 0.15, fbm(wx * u.cliffMaskScale, wy * u.cliffMaskScale, sd + 404.9, 3));
             const band = Math.max(u.cliffWidth * u.cliffScale, 0.02);
             h += cm * (smoothstep(0.5 - band, 0.5 + band, cn) * 2 - 1) * u.cliffDrop * 0.5;
-            const edge = Math.min(ux, uy, 1 - ux, 1 - uy) * S;
-            const rimF = 1 - smoothstep(0, u.rimZone, edge);
+            const inner = S / 2 - u.rimZone;
+            const beyond = Math.hypot(Math.max(Math.abs(wx - S / 2) - inner, 0), Math.max(Math.abs(wy - S / 2) - inner, 0));
+            const rimF = smoothstep(0, u.rimZone, beyond);
             h += rimF * (0.55 + 0.6 * fbm(wx * u.rimScale, wy * u.rimScale, sd + 505.3, 3)) * u.rimAmp;
             if (h > mx) mx = h;
         }
