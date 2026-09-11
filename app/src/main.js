@@ -434,9 +434,13 @@ const PRESETS = {
 function applyPreset(overrides) {
     gui.reset();
     Object.assign(params, overrides);
+    setRoadColor();
     gui.controllersRecursive().forEach(c => c.updateDisplay());
     scheduleGenerate();
 }
+// Save/Load als JSON: alle params außer maxH (automatisch) (→ Plan/SaveLoad.md)
+const SAVE_KEYS = Object.keys(params).filter(k => k !== 'maxH');
+const pickParams = obj => Object.fromEntries(SAVE_KEYS.filter(k => k in obj).map(k => [k, obj[k]]));
 const fPreset = gui.addFolder('Presets');
 fPreset.add({ reset: () => applyPreset({}) }, 'reset').name('Defaults');
 for (const [name, p] of Object.entries(PRESETS)) fPreset.add({ apply: () => applyPreset(p) }, 'apply').name(name);
@@ -481,6 +485,48 @@ fGlobal.add(params, 'maxH').name('maxH (auto)').disable().listen();
 addNum(fGlobal, 'waterLevel', 0, 50, 0.5);
 gui.add({ regenerate: runGenerate }, 'regenerate').name('Regenerate');
 gui.add({ exportPng }, 'exportPng').name('Export PNG');
+gui.add({ saveSettings }, 'saveSettings').name('Save');
+gui.add({ load: () => loadInput.click() }, 'load').name('Load');
+
+function download(blob, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+}
+
+// id: Dialog merkt sich den zuletzt gewählten Ordner (Projektordner vorwählen kann ein Browser nicht)
+async function saveSettings() {
+    const json = JSON.stringify(pickParams(params), null, 2);
+    const name = `heightmap-${params.seed}.json`;
+    if (!window.showSaveFilePicker) return download(new Blob([json], { type: 'application/json' }), name);
+    try {
+        const file = await window.showSaveFilePicker({
+            id: 'presets', suggestedName: name,
+            types: [{ description: 'Terrain settings', accept: { 'application/json': ['.json'] } }],
+        });
+        const w = await file.createWritable();
+        await w.write(json);
+        await w.close();
+    } catch (e) {
+        if (e.name !== 'AbortError') console.error('Save:', e);
+    }
+}
+
+const loadInput = Object.assign(document.createElement('input'), { type: 'file', accept: '.json' });
+loadInput.addEventListener('change', async () => {
+    const f = loadInput.files[0];
+    loadInput.value = ''; // sonst löst dieselbe Datei beim nächsten Mal kein change aus
+    if (!f) return;
+    try {
+        applyPreset(pickParams(JSON.parse(await f.text())));
+    } catch (e) {
+        console.error(`Load ${f.name}:`, e.message);
+    }
+});
 
 // Graustufen-PNG der rohen Heightmap (0–1 → 0–255), 1:1 zu den Preview-Daten
 function exportPng() {
@@ -498,15 +544,7 @@ function exportPng() {
         d[i * 4 + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
-    c.toBlob(blob => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `heightmap-${params.seed}.png`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(a.href);
-    }, 'image/png');
+    c.toBlob(blob => download(blob, `heightmap-${params.seed}.png`), 'image/png');
 }
 
 runGenerate();
