@@ -7,7 +7,7 @@ const mapSize = 400;
 const N = 128;
 const opts = {
     waterLevel: 15, roadOffset: 2, levelSmoothing: 12, slopePenalty: 5, waterAvoid: 2,
-    rimAmp: 40, rimZone: 45, rimAvoid: 2, townCount: 6, townSpacing: 70, exitCount: 3, extraLinks: 2, reuse: 0.4,
+    rimZone: 45, townCount: 6, townSpacing: 70, exitCount: 3, extraLinks: 2, reuse: 0.4,
 };
 
 let fail = 0;
@@ -112,17 +112,21 @@ for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
     check(worst <= 0.3, `Level an gleicher Stelle (< 1 m Abstand): max Δ ${worst.toFixed(2)} m ≤ 0,3 m`);
 }
 
-// Rand-Ring (→ T2): Ausfahrt-Straßen queren die Randzone nur (Länge in der Zone ≤ 1,6 × rimZone)
-for (let r = 0; r < a.count; r++) {
-    if (!a.edges[r].some(i => a.nodes[i].exit)) continue;
-    const pts = road(a, r);
-    let len = 0;
-    for (let i = 2; i < pts.length; i += 2) {
-        const mx = (pts[i] + pts[i - 2]) / 2, my = (pts[i + 1] + pts[i - 1]) / 2;
-        if (Math.min(mx, my, mapSize - mx, mapSize - my) < opts.rimZone)
-            len += Math.hypot(pts[i] - pts[i - 2], pts[i + 1] - pts[i - 1]);
+// Rand-Ring geschlossen (→ Plan/PresetsAusfahrten.md A1): Gelände mit Ring wie heightmap.wgsl (40 m über
+// rimZone); Ausfahrten am Ringfuß, keine Straße tiefer als 2 m in der Randzone
+{
+    const edgeDist = (x, y) => Math.min(x, y, mapSize - x, mapSize - y);
+    const data = new Float32Array(N * N);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const t = Math.min(edgeDist((i + 0.5) * mapSize / N, (j + 0.5) * mapSize / N) / opts.rimZone, 1);
+        data[j * N + i] = 30 + 40 * (1 - t * t * (3 - 2 * t));
     }
-    check(len <= 1.6 * opts.rimZone, `Ausfahrt-Straße ${r}: ${len.toFixed(0)} m in der Randzone ≤ ${(1.6 * opts.rimZone).toFixed(0)} m`);
+    const res = generateRoads(seed, mapSize, { size: N, data }, opts);
+    for (const n of res.nodes.filter(n => n.exit))
+        check(Math.abs(edgeDist(n.x, n.y) - opts.rimZone) < 0.5, `Ausfahrt (${n.x.toFixed(0)},${n.y.toFixed(0)}) am Ringfuß`);
+    let deepest = Infinity;
+    for (let i = 0; i < res.count * ROAD_POINTS * 2; i += 2) deepest = Math.min(deepest, edgeDist(res.points[i], res.points[i + 1]));
+    check(deepest >= opts.rimZone - 2, `Straßen bleiben aus dem Ring: min. Kantenabstand ${deepest.toFixed(1)} m ≥ ${opts.rimZone - 2} m`);
 }
 
 // Netz-Planung (→ Plan/TerrainStrassennetz.md N1): Orte trocken/flach/außerhalb Randzone, Mindestabstand,
@@ -150,7 +154,7 @@ for (let r = 0; r < a.count; r++) {
     }
     for (let a = 0; a < towns.length; a++) for (let b = a + 1; b < towns.length; b++)
         check(Math.hypot(towns[a].x - towns[b].x, towns[a].y - towns[b].y) >= nopts.townSpacing, `Orte ${a}/${b} Mindestabstand`);
-    for (const e of exits) check(edgeDist(e) < 1e-6, 'Ausfahrt liegt auf der Kante');
+    for (const e of exits) check(Math.abs(edgeDist(e) - nopts.rimZone) < 1e-6, 'Ausfahrt liegt am Ringfuß');
     const root = net.nodes.map((_, i) => i);
     const find = i => (root[i] === i ? i : (root[i] = find(root[i])));
     for (const [a, b] of net.edges) root[find(a)] = find(b);

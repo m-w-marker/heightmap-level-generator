@@ -25,7 +25,6 @@ struct Params {
     roadHalfWidth: f32,
     roadSlope: f32,
     roadOffset: f32, // nur Layout-Platzhalter: Offset steckt schon im Level (roads[].z)
-    passWidth: f32,
 };
 
 // = MAX_ROADS / ROAD_POINTS in roadgen.js (Layout-Test prüft); Array-Größe = Produkt
@@ -136,9 +135,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
 
-    // 5) Rand-Ring: Anhöhe Richtung Map-Kante, an Straßen zum Pass abgesenkt (Prepass ohne Ring → Level passt)
+    // 5) Rand-Ring: Anhöhe Richtung Map-Kante, geschlossen (Horizont) — Ausfahrten enden am Ringfuß
     let edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * u.params.mapSize;
-    let rimF = (1.0 - smoothstep(0.0, u.params.rimZone, edge)) * smoothstep(u.params.roadHalfWidth, u.params.passWidth, dMin);
+    let rimF = 1.0 - smoothstep(0.0, u.params.rimZone, edge);
     h += rimF * (0.6 + 0.4 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp;
 
     // 6) Straßen — gewinnt über allem: Fahrbahn = Level, daneben Böschung mit fester Neigung

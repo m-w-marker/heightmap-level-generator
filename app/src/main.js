@@ -66,8 +66,6 @@ const params = {
     levelSmoothing: 12, // m Radius des Level-Felds
     slopePenalty: 4,
     waterAvoid: 2,
-    passWidth: 40,
-    rimAvoid: 2,
     townCount: 5,
     townSpacing: 80,
     exitCount: 3,
@@ -130,9 +128,9 @@ async function generate() {
     const t0 = performance.now();
     params.maxH = autoMaxH(params);
 
-    // Prepass: 128² Roh-Terrain (ohne Straßen, ohne Rand-Ring → Pässe) → Routing-Daten für roadgen
-    // (→ Plan/TerrainStrassennetz.md T2); maxH bleibt das des Final-Pass
-    encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0, rimAmp: 0 },
+    // Prepass: 128² Roh-Terrain (ohne Straßen, mit Rand-Ring → Routing meidet ihn über slopePenalty)
+    // → Routing-Daten für roadgen (→ Plan/PresetsAusfahrten.md)
+    encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0 },
         new Float32Array(MAX_ROADS * ROAD_POINTS * 2), new Float32Array(MAX_ROADS * ROAD_POINTS), uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     const preEnc = device.createCommandEncoder();
@@ -145,7 +143,7 @@ async function generate() {
     const pre = await readBuffer(heightBuf, PRE * PRE * 4);
     for (let i = 0; i < pre.length; i++) terrain128[i] = pre[i] * params.maxH;
 
-    // Prepass-Konsole-Check (→ Plan/Roads.md S1): Min/Max ≈ Final-Pass ohne Rand-Ring
+    // Prepass-Konsole-Check (→ Plan/Roads.md S1): Min/Max ≈ Final-Pass
     let pMn = Infinity, pMx = -Infinity;
     for (const h of terrain128) {
         if (h < pMn) pMn = h;
@@ -397,8 +395,6 @@ const fRim = gui.addFolder('Rand-Ring');
 addNum(fRim, 'rimAmp', 0, 100, 1);
 addNum(fRim, 'rimZone', 10, 150, 5);
 addNum(fRim, 'rimWave', 20, 300, 5);
-addNum(fRim, 'passWidth', 10, 80, 1);
-addNum(fRim, 'rimAvoid', 0, 5, 0.5);
 const fGlobal = gui.addFolder('Global');
 fGlobal.add(params, 'maxH').name('maxH (auto)').disable().listen();
 addNum(fGlobal, 'waterLevel', 0, 50, 0.5);

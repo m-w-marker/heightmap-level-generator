@@ -154,7 +154,7 @@ const TOWN_PROBE = 10; // m: 3×3-Probe im Abstand → Höhenspanne = Flachheit 
 const MIN_LINK_ANGLE = 35 * Math.PI / 180; // Zusatzkanten nicht fast parallel zu vorhandenen
 
 // Orte: flach + trocken + außerhalb Randzone, gierig (flachste zuerst) mit Mindestabstand.
-// Ausfahrten: gleichmäßig über den Umfang verteilt. Kanten: MST über Orte + extraLinks kürzeste
+// Ausfahrten: gleichmäßig über den Umfang verteilt, am Ringfuß. Kanten: MST über Orte + extraLinks kürzeste
 // Zusatzkanten (Winkelcheck) + jede Ausfahrt → nächster Ort. → { nodes: [{x, y, exit}], edges: [[a, b]] }
 export function planNetwork(seed, mapSize, terrain, opts) {
     const rand = mulberry32(seed ^ 0x9e3779b9);
@@ -183,8 +183,9 @@ export function planNetwork(seed, mapSize, terrain, opts) {
     const off = rand();
     for (let k = 0; k < opts.exitCount; k++) {
         const s = (((k + off) / opts.exitCount + 0.1 * (rand() - 0.5)) % 1 + 1) % 1 * 4;
-        const [x, y] = edgePoint(Math.floor(s), Math.min(Math.max(s % 1, 0.1), 0.9), mapSize);
-        nodes.push({ x, y, exit: true });
+        // auf dem um rimZone eingerückten Quadrat = Ringfuß (rimF = 0) → Ring bleibt geschlossen
+        const [x, y] = edgePoint(Math.floor(s), Math.min(Math.max(s % 1, 0.1), 0.9), mapSize - 2 * opts.rimZone);
+        nodes.push({ x: x + opts.rimZone, y: y + opts.rimZone, exit: true });
     }
 
     const d = (a, b) => Math.hypot(nodes[a].x - nodes[b].x, nodes[a].y - nodes[b].y);
@@ -234,9 +235,8 @@ function edgePoint(edge, t, mapSize) {
 }
 
 // Dijkstra 16-Nachbarn (inkl. Springer-Züge: 26,6°-Schritte statt 45°-Zickzack);
-// Kantenkosten = length + slopePenalty·|Δh| (+ waterAvoid·length unter waterLevel)
-// (+ rimAvoid·length·Ring-Gewicht: Prepass hat keinen Ring, Straßen dort werden zu Pässen → nur queren);
-// Kostenfeld `field`: auf Straße × reuse, im Band daneben + BAND_AVOID·length.
+// Kantenkosten = length + slopePenalty·|Δh| (+ waterAvoid·length unter waterLevel); Rand-Ring steckt im
+// Prepass-Gelände → wird über slopePenalty gemieden. Kostenfeld `field`: auf Straße × reuse, im Band daneben + BAND_AVOID·length.
 // Feste Nachbar-Reihenfolge + striktes < → deterministisch (→ Plan/Roads.md „Routing“)
 function dijkstra(terrain, mapSize, start, goal, opts, field) {
     const N = terrain.size, h = terrain.data, cs = mapSize / N, nN = N * N;
@@ -290,12 +290,6 @@ function dijkstra(terrain, mapSize, start, goal, opts, field) {
         }
         return top;
     }
-    // Ring-Gewicht wie rimF in heightmap.wgsl: 1 an der Kante → 0 bei rimZone
-    function rimWeight(x, y) {
-        const e = Math.min(x + 0.5, y + 0.5, N - 0.5 - x, N - 0.5 - y) * cs;
-        const t = Math.min(e / opts.rimZone, 1);
-        return 1 - t * t * (3 - 2 * t);
-    }
     const NB = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
         [-2, -1], [-1, -2], [1, -2], [2, -1], [-2, 1], [-1, 2], [1, 2], [2, 1]];
     dist[start] = 0;
@@ -312,7 +306,6 @@ function dijkstra(terrain, mapSize, start, goal, opts, field) {
             const len = Math.hypot(NB[k][0], NB[k][1]) * cs;
             let c = len + opts.slopePenalty * Math.abs(h[v] - h[u]);
             if (h[u] < opts.waterLevel || h[v] < opts.waterLevel) c += opts.waterAvoid * len;
-            if (opts.rimAmp > 0) c += opts.rimAvoid * len * rimWeight(x, y);
             if (field[v] === 2) c *= opts.reuse;
             else if (field[v] === 1) c += BAND_AVOID * len;
             const nd = du + c;
