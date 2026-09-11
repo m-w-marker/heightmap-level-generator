@@ -66,8 +66,9 @@ const params = {
 const uniformsData = new Float32Array(ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS);
 
 const device = renderer.backend.device;
-const queue = device.queue;
 if (!device) throw new Error('Kein WebGPU-Device (WebGL-Fallback aktiv?)');
+const queue = device.queue;
+device.addEventListener('uncapturederror', e => console.error('WebGPU:', e.error.message));
 
 const heightBuf = device.createBuffer({
     size: RES * RES * 4,
@@ -76,12 +77,12 @@ const heightBuf = device.createBuffer({
 const uniformsBuf = device.createBuffer({ size: uniformsData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 const roadMaskBuf = device.createBuffer({ size: RES * RES * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
 
+const shaderModule = device.createShaderModule({ code: WGSL });
+const info = await shaderModule.getCompilationInfo();
+for (const m of info.messages) console[m.type === 'error' ? 'error' : 'warn'](`WGSL ${m.lineNum}:${m.linePos} ${m.message}`);
 const pipeline = device.createComputePipeline({
     layout: 'auto',
-    compute: {
-        module: device.createShaderModule({ code: WGSL }),
-        entryPoint: 'main',
-    },
+    compute: { module: shaderModule, entryPoint: 'main' },
 });
 
 const bind = device.createBindGroup({
@@ -264,7 +265,7 @@ function buildTerrainMesh() {
     return new THREE.Mesh(geo, terrainMat);
 }
 
-generate();
+generate().catch(e => console.error('generate:', e));
 
 renderer.setAnimationLoop(() => {
     controls.update();
