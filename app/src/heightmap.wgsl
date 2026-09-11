@@ -24,7 +24,7 @@ struct Params {
     roadCount: f32,
     roadHalfWidth: f32,
     roadSlope: f32,
-    roadOffset: f32, // nur Layout-Platzhalter: Offset steckt schon im Level (roads[].z)
+    roadTolerance: f32,
 };
 
 // = MAX_ROADS / ROAD_POINTS in roadgen.js (Layout-Test prüft); Array-Größe = Produkt
@@ -140,11 +140,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let rimF = 1.0 - smoothstep(0.0, u.params.rimZone, edge);
     h += rimF * (0.6 + 0.4 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp;
 
-    // 6) Straßen — gewinnt über allem: Fahrbahn = Level, daneben Böschung mit fester Neigung
-    // (Gelände in einen Kegel um das Level geklemmt → tiefer Einschnitt = breitere Böschung, keine Wand)
+    // 6) Straßen — gewinnt über allem: Fahrbahn folgt dem Gelände im Band Level ± roadTolerance, daneben
+    // Böschung mit fester Neigung (Gelände in einen Kegel um das Band geklemmt → Kante nur, wo das Gelände
+    // stärker abweicht; tiefer Einschnitt = breitere Böschung, keine Wand)
     // vereinfacht: nur die nächste Straße klemmt – Kreuzungen mit abweichendem Level knicken an der Mittellinie
     if (nRoads > 0u) {
-        let e = max(dMin - u.params.roadHalfWidth, 0.0) * u.params.roadSlope;
+        let e = u.params.roadTolerance + max(dMin - u.params.roadHalfWidth, 0.0) * u.params.roadSlope;
         h = clamp(h, roadL - e, roadL + e);
     }
 

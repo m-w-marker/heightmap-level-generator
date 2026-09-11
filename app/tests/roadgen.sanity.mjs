@@ -6,7 +6,7 @@ const seed = 1337;
 const mapSize = 400;
 const N = 128;
 const opts = {
-    waterLevel: 15, roadOffset: 2, levelSmoothing: 12, slopePenalty: 5, waterAvoid: 2,
+    waterLevel: 15, roadOffset: 2, roadTolerance: 0.7, levelSmoothing: 12, slopePenalty: 5, waterAvoid: 2,
     rimZone: 45, townCount: 6, townSpacing: 70, exitCount: 3, extraLinks: 2, reuse: 0.4,
 };
 

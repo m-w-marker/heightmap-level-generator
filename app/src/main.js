@@ -62,8 +62,10 @@ const params = {
     waterLevel: 15,
     roadWidth: 4,
     roadSlope: 35, // Böschungswinkel in °
-    roadOffset: 2,
-    levelSmoothing: 12, // m Radius des Level-Felds
+    roadOffset: -0.3, // leicht eingesunken wie ein Feldweg (→ Plan/StrassenLandschaft.md)
+    roadTolerance: 0.7,
+    roadColor: '#9a8462',
+    levelSmoothing: 6, // m Radius des Level-Felds
     slopePenalty: 4,
     waterAvoid: 2,
     townCount: 5,
@@ -202,30 +204,33 @@ async function generate() {
         `Straßen: ${(100 * roadPx / heights.length).toFixed(1)} % · Road-Level ${rMn.toFixed(1)}–${rMx.toFixed(1)} m`
     );
 
-    // Readback-Level vs. CPU-Level an den Polyline-Punkten (→ Plan/Roads.md S3); Ausreißer nur an Kreuzungen erwartet
-    const nPts = count * ROAD_POINTS;
+    // Readback-Level vs. CPU-Level an den Polyline-Punkten (→ Plan/Roads.md S3); Fahrbahn darf im
+    // Toleranzband liegen (→ Plan/StrassenLandschaft.md); Ausreißer nur an Kreuzungen erwartet
+    const nPts = count * ROAD_POINTS, band = params.roadTolerance + 0.5;
     let dMax = 0, nOut = 0;
     for (let k = 0; k < nPts; k++) {
         const px = Math.min(Math.floor(roads[2 * k] / MAP * RES), RES - 1);
         const py = Math.min(Math.floor(roads[2 * k + 1] / MAP * RES), RES - 1);
         const d = Math.abs(heights[py * RES + px] * params.maxH - levels[k]);
         if (d > dMax) dMax = d;
-        if (d > 0.5) nOut++;
+        if (d > band) nOut++;
     }
     if (nPts > 0)
-        console.log(`Road-Level GPU vs. CPU: max Δ ${dMax.toFixed(2)} m · ${nOut}/${nPts} Punkte außerhalb ±0,5 m`);
+        console.log(`Road-Level GPU vs. CPU: max Δ ${dMax.toFixed(2)} m · ${nOut}/${nPts} Punkte außerhalb ±${band.toFixed(1)} m`);
 
+    refreshView();
+    console.log(`Regeneration: ${(performance.now() - t0).toFixed(0)} ms`);
+}
+
+// Preview + 3D-Mesh aus dem aktuellen Readback (auch bei reinem Farbwechsel, ohne Regeneration)
+function refreshView() {
     updatePreview();
-
-    // M4: 3D-Mesh aus dem neuen Readback ersetzen
     if (terrain) {
         scene.remove(terrain);
         terrain.geometry.dispose();
     }
     terrain = buildTerrainMesh();
     scene.add(terrain);
-
-    console.log(`Regeneration: ${(performance.now() - t0).toFixed(0)} ms`);
 }
 
 // --- 2D-Preview (Farbcodierung nach Höhe) ---
@@ -242,6 +247,14 @@ const STOPS = [
     [0.85, [160, 156, 148]],  // Schutt
     [1.0, [242, 246, 250]],   // Schnee
 ];
+
+// '#rrggbb' → [r, g, b] 0–255, gecacht: terrainColor läuft 1M× pro Bild
+let roadRGB = [0, 0, 0];
+function setRoadColor() {
+    const v = parseInt(params.roadColor.slice(1), 16);
+    roadRGB = [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+setRoadColor();
 
 // schreibt 0–255-Werte (→ Plan/Build.md Datenfluss)
 function terrainColor(out, o, hm, m) {
@@ -263,10 +276,10 @@ function terrainColor(out, o, hm, m) {
         b = a[1][2] + (c[1][2] - a[1][2]) * f;
     }
     if (m > 0.5) {
-        const f = (m - 0.5) * 2; // weiche Kante in der Böschungszone
-        r = r * (1 - f) + 66 * f;
-        g = g * (1 - f) + 66 * f;
-        b = b * (1 - f) + 72 * f;
+        const f = (m - 0.5) * 2; // weiche Fahrbahnkante
+        r = r * (1 - f) + roadRGB[0] * f;
+        g = g * (1 - f) + roadRGB[1] * f;
+        b = b * (1 - f) + roadRGB[2] * f;
     }
     out[o] = r;
     out[o + 1] = g;
@@ -410,7 +423,9 @@ addNum(fRoad, 'exitCount', 0, 4, 1);
 addNum(fRoad, 'extraLinks', 0, 4, 1);
 addNum(fRoad, 'roadWidth', 1, 5, 0.5);
 addNum(fRoad, 'roadSlope', 15, 60, 1);
-addNum(fRoad, 'roadOffset', 0, 5, 0.1);
+addNum(fRoad, 'roadOffset', -2, 3, 0.1);
+addNum(fRoad, 'roadTolerance', 0, 3, 0.1);
+fRoad.addColor(params, 'roadColor').onChange(() => { setRoadColor(); refreshView(); });
 addNum(fRoad, 'levelSmoothing', 0, 40, 1);
 addNum(fRoad, 'slopePenalty', 0, 10, 0.5);
 addNum(fRoad, 'waterAvoid', 0, 5, 0.5);

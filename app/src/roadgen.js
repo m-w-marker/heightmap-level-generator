@@ -139,10 +139,10 @@ export function generateRoads(seed, mapSize, terrain, opts) {
         pts.push(B.x, B.y);
         const res = resample(chaikin(smoothPath(pts, PATH_SMOOTH), 2), ROAD_POINTS);
         points.set(res, r * ROAD_POINTS * 2);
-        // Level nie unter Wasser (Damm statt Graben)
+        // Level nie unter Wasser: auch der tiefste Punkt des Toleranzbands (Level − roadTolerance) bleibt trocken
         for (let i = 0; i < ROAD_POINTS; i++) {
             const l = sampleTerrain(levelField, mapSize, res[2 * i], res[2 * i + 1]) + opts.roadOffset;
-            levels[r * ROAD_POINTS + i] = Math.max(l, opts.waterLevel + opts.roadOffset);
+            levels[r * ROAD_POINTS + i] = Math.max(l, opts.waterLevel + opts.roadTolerance + 0.3);
         }
     });
     return { points, levels, count: edges.length, nodes: net.nodes, edges };

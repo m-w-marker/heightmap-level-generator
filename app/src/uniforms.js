@@ -53,7 +53,8 @@ export const PARAM_FIELDS = {
     roadCount: p => p.roadCount,
     roadHalfWidth: p => p.roadWidth / 2,
     roadSlope: p => Math.tan(p.roadSlope * Math.PI / 180), // Böschungswinkel ° → Höhe pro m
-    roadOffset: p => p.roadOffset,};
+    roadTolerance: p => p.roadTolerance,
+};
 
 // Float-Index von roads: Params-Felder auf die 16-Byte-Align des vec4-Arrays aufgefüllt
 export const ROADS_OFFSET = Math.ceil(Object.keys(PARAM_FIELDS).length / 4) * 4;
