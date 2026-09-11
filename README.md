@@ -11,7 +11,7 @@ tweak everything live and export the result as PNG.
 - **GPU generation** — WGSL compute shader, regenerates instantly while you drag sliders
 - **Seed-based** — same seed + parameters, same terrain
 - **Road network** — towns on flat, dry ground plus map exits, connected by a spanning tree with extra
-  loops; routed around steep slopes and water, later roads merge into existing ones (junctions instead
+  loops (only where they are a real shortcut, on their own track); routed around steep slopes and water, later roads merge into existing ones (junctions instead
   of parallel lanes); roads lie on the landscape within a tolerance band, cuts and banks only where the
   terrain demands it, with varying steepness
 - **Road grade limit** — `roadMaxGrade` caps how steep a road may climb: routing looks for gaps instead of
@@ -55,7 +55,8 @@ All distances are in meters (1 unit = 1 m), coverages in % of the map, `roadSlop
 | Hills | `hillAmp`, `hillWave`, `hillRoughness` |
 | Mountains | `mountainAmp`, `mountainWave`, `clusterWave`, `mountainCoverage` |
 | Cliffs | `cliffDrop`, `cliffWave`, `cliffWidth`, `cliffAreaWave`, `cliffCoverage` |
-| Roads | `townCount`, `townSpacing`, `exitCount`, `extraLinks`, `roadWidth`, `roadSlope`, `roadSlopeVar`, `roadOffset`, `roadTolerance`, `roadColor`, `levelSmoothing`, `slopePenalty`, `roadMaxGrade`, `waterAvoid`, `reuse` |
+| Road network | `townCount`, `townSpacing`, `exitCount`, `extraLinks`, `reuse`, `slopePenalty`, `roadMaxGrade`, `waterAvoid` |
+| Road edges | `roadWidth`, `roadSlope`, `roadSlopeVar`, `roadOffset`, `roadTolerance`, `levelSmoothing`, `roadColor` |
 | Border ring | `rimAmp`, `rimZone`, `rimWave` |
 | Global | `maxH` (auto), `waterLevel` |
 

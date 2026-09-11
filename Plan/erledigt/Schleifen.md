@@ -1,6 +1,6 @@
 # Plan: Echte Schleifen (extraLinks) + Straßen-Regler in zwei Ordnern
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -32,6 +32,6 @@ Zweck geteilt: Netz vs. Straßenrand.
 - [x] L1 Schleifen — geprüft am 2026-09-11 (Sanity: ohne Umweg-Auswahl bzw. ohne reuse-Ausnahme rot;
   echte Terrains: Zusatzstraßen 0–33 % auf fremder Trasse statt 94–97 %; bei 4–5 Orten nur 1–2 sinnvolle
   Schleifen, `extraLinks` 4 = 2)
-- [ ] L2 GUI-Ordner — geprüft am
+- [x] L2 GUI-Ordner — geprüft am 2026-09-11 (headless alle 7 Presets 0 Punkte außerhalb des Bands, Ordner sichtbar)
 
 <!-- fertig: git mv Plan/Schleifen.md Plan/erledigt/ -->
