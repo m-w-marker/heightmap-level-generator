@@ -51,47 +51,64 @@ struct Uniforms {
 
 // --- Noise ---
 
-fn hash(p2: vec2<f32>, seed: f32) -> f32 {
-    let n = dot(p2, vec2<f32>(127.1, 311.7)) + seed * 74.7;
-    return fract(sin(n) * 43758.5453123);
+// Integer-Hash (lowbias32) statt fract(sin(…)): sin großer Argumente ist je GPU verschieden (→ .clinerules/wgsl.md)
+fn mix32(v: u32) -> u32 {
+    var x = v;
+    x ^= x >> 16u;
+    x *= 0x7feb352du;
+    x ^= x >> 15u;
+    x *= 0x846ca68bu;
+    x ^= x >> 16u;
+    return x;
+}
+
+// Schlüssel je Noise-Ebene aus dem Seed — ganzzahlig, damit keine f32-Rundung (fma) den Hash kippt
+fn layerKey(layer: u32) -> u32 {
+    return mix32(mix32(u32(u.params.seed)) + layer);
+}
+
+// cell = ganzzahlige Gitterzelle (floor) → [0, 1)
+fn hash(cell: vec2<f32>, key: u32) -> f32 {
+    let c = bitcast<vec2<u32>>(vec2<i32>(cell));
+    return f32(mix32(c.x ^ mix32(c.y ^ key)) >> 8u) / 16777216.0; // 24 Bit = f32-Mantisse
 }
 
 // Value-Noise in [-1, 1]
-fn vnoise(p2: vec2<f32>, seed: f32) -> f32 {
+fn vnoise(p2: vec2<f32>, key: u32) -> f32 {
     let i = floor(p2);
     let f = fract(p2);
     let u = f * f * (3.0 - 2.0 * f);
-    let a = hash(i, seed);
-    let b = hash(i + vec2<f32>(1.0, 0.0), seed);
-    let c = hash(i + vec2<f32>(0.0, 1.0), seed);
-    let d = hash(i + vec2<f32>(1.0, 1.0), seed);
+    let a = hash(i, key);
+    let b = hash(i + vec2<f32>(1.0, 0.0), key);
+    let c = hash(i + vec2<f32>(0.0, 1.0), key);
+    let d = hash(i + vec2<f32>(1.0, 1.0), key);
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 2.0 - 1.0;
 }
 
 // gain = Amplitudenfaktor je Oktave (Rauheit): klein = glatt rollend, groß = zerklüftet
-fn fbmGain(p2: vec2<f32>, seed: f32, octaves: i32, gain: f32) -> f32 {
+fn fbmGain(p2: vec2<f32>, key: u32, octaves: i32, gain: f32) -> f32 {
     var v = 0.0;
     var amp = 0.5;
     var freq = 1.0;
     for (var i = 0i; i < octaves; i++) {
-        v += amp * vnoise(p2 * freq, seed + f32(i) * 17.31);
+        v += amp * vnoise(p2 * freq, mix32(key + u32(i)));
         freq *= 2.03;
         amp *= gain;
     }
     return v;
 }
 
-fn fbm(p2: vec2<f32>, seed: f32, octaves: i32) -> f32 {
-    return fbmGain(p2, seed, octaves, 0.5);
+fn fbm(p2: vec2<f32>, key: u32, octaves: i32) -> f32 {
+    return fbmGain(p2, key, octaves, 0.5);
 }
 
 // Scharfe Kämme (Ridge-Noise) in [0, 1]
-fn ridge(p2: vec2<f32>, seed: f32, octaves: i32) -> f32 {
+fn ridge(p2: vec2<f32>, key: u32, octaves: i32) -> f32 {
     var v = 0.0;
     var amp = 0.5;
     var freq = 1.0;
     for (var i = 0i; i < octaves; i++) {
-        let n = vnoise(p2 * freq, seed + f32(i) * 17.31) * 0.5 + 0.5;
+        let n = vnoise(p2 * freq, mix32(key + u32(i))) * 0.5 + 0.5;
         v += amp * (1.0 - abs(2.0 * n - 1.0));
         freq *= 2.03;
         amp *= 0.5;
@@ -117,16 +134,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Amplituden, Schwellen und cliffWidth kommen auf der CPU normiert an (→ uniforms.js, Messwerte)
     // 1) Basisterain + Hügel
-    var h = u.params.baseLevel + fbmGain(w * u.params.hillScale, u.params.seed, 5, u.params.hillGain) * u.params.hillAmp;
+    var h = u.params.baseLevel + fbmGain(w * u.params.hillScale, layerKey(0u), 5, u.params.hillGain) * u.params.hillAmp;
 
     // 2) Berge: Cluster-Maske (Schwelle = Abdeckung, Weiche ±0.15 = MASK_SOFT) × Ridge
-    let mMask = smoothstep(u.params.mountainThr - 0.15, u.params.mountainThr + 0.15, fbm(w * u.params.maskScale, u.params.seed + 101.3, 3));
-    h += mMask * ridge(w * u.params.mountainScale, u.params.seed + 202.7, 5) * u.params.mountainAmp;
+    let mMask = smoothstep(u.params.mountainThr - 0.15, u.params.mountainThr + 0.15, fbm(w * u.params.maskScale, layerKey(1u), 3));
+    h += mMask * ridge(w * u.params.mountainScale, layerKey(2u), 5) * u.params.mountainAmp;
 
     // 3) Abrisskanten: Plateaus mit steilen Bruchkanten
     // vereinfacht: Meter → Noise-Band über den mittleren Gradienten an der Kante – lokal ±Faktor 2
-    let cn = fbm(w * u.params.cliffScale, u.params.seed + 303.1, 4) * 0.5 + 0.5;
-    let cMask = smoothstep(u.params.cliffThr - 0.15, u.params.cliffThr + 0.15, fbm(w * u.params.cliffMaskScale, u.params.seed + 404.9, 3));
+    let cn = fbm(w * u.params.cliffScale, layerKey(3u), 4) * 0.5 + 0.5;
+    let cMask = smoothstep(u.params.cliffThr - 0.15, u.params.cliffThr + 0.15, fbm(w * u.params.cliffMaskScale, layerKey(4u), 3));
     let band = max(u.params.cliffWidth * u.params.cliffScale, 0.02);
     h += cMask * (smoothstep(0.5 - band, 0.5 + band, cn) * 2.0 - 1.0) * u.params.cliffDrop * 0.5;
 
@@ -152,7 +169,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let half = 0.5 * u.params.mapSize;
     let beyond = length(max(abs(w - half) - (half - u.params.rimZone), vec2<f32>(0.0)));
     let rimF = smoothstep(0.0, u.params.rimZone, beyond);
-    h += rimF * (0.55 + 0.6 * fbm(w * u.params.rimScale, u.params.seed + 505.3, 3)) * u.params.rimAmp; // ~30–80 %, keine gleichmäßige Wand
+    h += rimF * (0.55 + 0.6 * fbm(w * u.params.rimScale, layerKey(5u), 3)) * u.params.rimAmp; // ~30–80 %, keine gleichmäßige Wand
 
     // 6) Straßen — gewinnt über allem: Fahrbahn folgt dem Gelände im Band Level ± roadTolerance, daneben
     // Böschung mit fester Neigung (Gelände in einen Kegel um das Band geklemmt → Kante nur, wo das Gelände
@@ -163,7 +180,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         // Schwankung auf den Abstand zu SLOPE_MIN/MAX begrenzt (hinterher klemmen → Winkel klebt an der Grenze)
         let ang0 = clamp(u.params.roadSlope, SLOPE_MIN, SLOPE_MAX);
         let vary = min(u.params.roadSlopeVar, min(ang0 - SLOPE_MIN, SLOPE_MAX - ang0));
-        let s0 = tan(ang0 + vary * vnoise(w / SLOPE_VAR_WAVE, u.params.seed + 606.1));
+        let s0 = tan(ang0 + vary * vnoise(w / SLOPE_VAR_WAVE, layerKey(6u)));
         // Neigung s0 am Fahrbahnrand, dann +1 je BANK_CURVE m bis tan(SLOPE_MAX); e = Integral → Schulter statt
         // endlosem Kegel (der rasiert bei flachem Winkel Berge 100 m neben der Straße)
         let sM = tan(SLOPE_MAX);

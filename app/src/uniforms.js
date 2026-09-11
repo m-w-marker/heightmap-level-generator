@@ -4,9 +4,9 @@ import { MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 
 // Gemessene Noise-Statistik (tests/noise.mjs, 40 Seeds) → Regler wirken in Metern / Flächen-%,
 // bewacht von tests/terrain.stats.mjs (→ Plan/TerrainStrassennetz.md T1)
-export const FBM5_P95 = 0.4706;   // p95 |fbm 5 Okt.| → hillAmp = p95-Auslenkung
-export const RIDGE5_P95 = 0.8272; // p95 ridge 5 Okt. → mountainAmp = p95-Gipfelhöhe
-const FBM4_GRAD0 = 1.014;         // mittlerer |∇fbm 4 Okt.| an der 0-Linie (Noise-Raum)
+export const FBM5_P95 = 0.4716;   // p95 |fbm 5 Okt.| → hillAmp = p95-Auslenkung
+export const RIDGE5_P95 = 0.8284; // p95 ridge 5 Okt. → mountainAmp = p95-Gipfelhöhe
+const FBM4_GRAD0 = 1.005;         // mittlerer |∇fbm 4 Okt.| an der 0-Linie (Noise-Raum)
 // Quantile fbm 3 Okt. bei 0, 5, …, 100 %; Enden = theoretisches Max + Maskenweiche → 0 % / 100 % exakt
 const MASK_SOFT = 0.15; // = Weiche der Masken-smoothsteps in heightmap.wgsl
 // fbm mit Oktaven-Gain g: Amplituden 0.5·g^i → Maximum Σ, σ ∝ sqrt(Σ²) (Oktaven ≈ unabhängig)
@@ -14,8 +14,8 @@ export const fbmMax = (octaves, g = 0.5) => { let s = 0; for (let i = 0; i < oct
 const fbmSigma = (octaves, g) => { let s = 0; for (let i = 0; i < octaves; i++) s += (0.5 * g ** i) ** 2; return Math.sqrt(s); };
 // p95 |fbm 5 Okt.| bei Gain g — gemessen bei 0.5, skaliert über σ-Verhältnis
 const hillP95 = g => FBM5_P95 * fbmSigma(5, g) / fbmSigma(5, 0.5);
-const FBM3_Q = [-fbmMax(3) - MASK_SOFT, -0.403, -0.3239, -0.2671, -0.2197, -0.1776, -0.1392, -0.1028, -0.0679, -0.0336,
-    0.0002, 0.034, 0.0676, 0.1023, 0.1384, 0.1764, 0.2184, 0.2663, 0.3229, 0.4029, fbmMax(3) + MASK_SOFT];
+const FBM3_Q = [-fbmMax(3) - MASK_SOFT, -0.4003, -0.3214, -0.2649, -0.218, -0.1764, -0.1376, -0.1013, -0.0661, -0.0322,
+    0.002, 0.0355, 0.07, 0.1047, 0.1414, 0.1803, 0.2229, 0.2701, 0.3272, 0.4061, fbmMax(3) + MASK_SOFT];
 
 // Masken-Schwelle, über der `pct` % der Map liegen
 export function coverageThr(pct) {

@@ -59,7 +59,7 @@ R16 README (ganz am Ende)
 
 ## Abgeschlossen
 - [x] R1 Untracked-Dateien (gelöscht) — geprüft am 2026-09-11
-- [ ] R2 Noise-Hash + Version — geprüft am
+- [x] R2 Noise-Hash + Version (Statistik neu gemessen, Abweichung < 1 %; 10 Seeds alt/neu gleich verteilt) — geprüft am 2026-09-11
 - [ ] R3 Generierzeit — geprüft am
 - [ ] R4 Undo/Redo — geprüft am
 - [ ] R5 Share-Link — geprüft am

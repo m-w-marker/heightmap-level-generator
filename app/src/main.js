@@ -427,6 +427,8 @@ function applyPreset(overrides) {
 }
 // Save/Load als JSON: alle params außer maxH (automatisch) (→ Plan/SaveLoad.md)
 const SAVE_KEYS = Object.keys(params).filter(k => k !== 'maxH');
+// 2: Integer-Noise-Hash → gleicher Seed ergibt ein anderes Terrain als in Version 1 (Dateien ohne Feld)
+const SAVE_VERSION = 2;
 // Fremde JSON (von Hand / aus der GUI kopiert): Schlüssel ohne Groß-/Kleinschreibung ("Seed"), Zahlen oft als
 // String → Typ vom Default erzwingen, sonst "45" + 10 = "4510" im Routing; Farbe mit '#'
 function pickParams(obj) {
@@ -471,7 +473,7 @@ function download(blob, name) {
 
 // id: Dialog merkt sich den zuletzt gewählten Ordner (Projektordner vorwählen kann ein Browser nicht)
 async function saveSettings() {
-    const json = JSON.stringify(pickParams(params), null, 2);
+    const json = JSON.stringify({ version: SAVE_VERSION, ...pickParams(params) }, null, 2);
     const name = `heightmap-${params.seed}.json`;
     if (!window.showSaveFilePicker) return download(new Blob([json], { type: 'application/json' }), name);
     try {
@@ -493,7 +495,10 @@ loadInput.addEventListener('change', async () => {
     loadInput.value = ''; // sonst löst dieselbe Datei beim nächsten Mal kein change aus
     if (!f) return;
     try {
-        applyPreset(pickParams(JSON.parse(await f.text())));
+        const obj = JSON.parse(await f.text());
+        const v = obj.version ?? 1;
+        if (v < SAVE_VERSION) console.warn(`Load ${f.name}: Version ${v} < ${SAVE_VERSION} — gleicher Seed, anderes Terrain`);
+        applyPreset(pickParams(obj));
     } catch (e) {
         console.error(`Load ${f.name}:`, e.message);
     }
@@ -547,6 +552,7 @@ async function exportSplatmap() {
 // Maßstab + Konvention für die Engine, dazu alle Einstellungen (Save-Format) → reproduzierbar
 function exportMeta() {
     const meta = {
+        version: SAVE_VERSION,
         mapSize: MAP,
         resolution: RES,
         maxH: params.maxH,
