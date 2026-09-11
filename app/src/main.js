@@ -219,6 +219,7 @@ async function generate() {
     if (nPts > 0)
         console.log(`Road level GPU vs. CPU: max Δ ${dMax.toFixed(2)} m · ${nOut}/${nPts} points outside ±${band.toFixed(1)} m`);
 
+    computeSlope();
     refreshView();
     console.log(`Regeneration: ${(performance.now() - t0).toFixed(0)} ms`);
 }
@@ -239,15 +240,18 @@ const preview = document.getElementById('preview');
 const pctx = preview.getContext('2d');
 const pimg = pctx.createImageData(RES, RES);
 
-// Farbrampe (Wasser/Sand/Gras/Fels/Schnee/Straße) — geteilt von 2D-Preview und 3D-Mesh, damit beide bei gleichem Seed identisch bleiben
+// Farbrampe (Wasser/Sand/Gras/Fels/Schnee/Straße) — geteilt von 2D-Preview und 3D-Mesh, damit beide bei gleichem Seed identisch bleiben.
+// In Metern über waterLevel, nicht relativ zu maxH (das ist automatisch → Farben würden je Preset wandern)
 const STOPS = [
-    [0.0, [196, 178, 128]],   // Sand
-    [0.25, [98, 142, 74]],    // Gras
-    [0.5, [64, 108, 56]],     // dunkles Grün
-    [0.7, [118, 110, 98]],    // Fels
-    [0.85, [160, 156, 148]],  // Schutt
-    [1.0, [242, 246, 250]],   // Schnee
+    [0, [194, 178, 128]],     // Sand (Ufer)
+    [1.5, [108, 146, 72]],    // Gras
+    [45, [72, 112, 54]],      // dunkles Grün
+    [85, [112, 104, 92]],     // Fels
+    [115, [150, 146, 138]],   // Schutt
+    [140, [240, 244, 248]],   // Schnee
 ];
+const ROCK = [110, 102, 92];
+const ROCK_SLOPE = [0.7, 1.2]; // Hangneigung (m/m ≈ 35°–50°) → Überblendung zu Fels
 
 // '#rrggbb' → [r, g, b] 0–255, gecacht: terrainColor läuft 1M× pro Bild
 let roadRGB = [0, 0, 0];
@@ -258,7 +262,7 @@ function setRoadColor() {
 setRoadColor();
 
 // schreibt 0–255-Werte (→ Plan/Build.md Datenfluss)
-function terrainColor(out, o, hm, m) {
+function terrainColor(out, o, hm, m, s) {
     let r, g, b;
     if (hm < params.waterLevel) {
         const t = hm / params.waterLevel;
@@ -266,15 +270,19 @@ function terrainColor(out, o, hm, m) {
         g = 90 + 28 * t;
         b = 158 + 22 * t;
     } else {
-        const n = Math.min(hm / params.maxH, 1);
-        let a = STOPS[0], c = STOPS[STOPS.length - 1];
+        const n = hm - params.waterLevel;
+        let a = STOPS[STOPS.length - 2], c = STOPS[STOPS.length - 1];
         for (let i = 0; i < STOPS.length - 1; i++) {
-            if (n >= STOPS[i][0] && n <= STOPS[i + 1][0]) { a = STOPS[i]; c = STOPS[i + 1]; break; }
+            if (n <= STOPS[i + 1][0]) { a = STOPS[i]; c = STOPS[i + 1]; break; }
         }
-        const f = (n - a[0]) / (c[0] - a[0]);
+        const f = Math.min((n - a[0]) / (c[0] - a[0]), 1);
         r = a[1][0] + (c[1][0] - a[1][0]) * f;
         g = a[1][1] + (c[1][1] - a[1][1]) * f;
         b = a[1][2] + (c[1][2] - a[1][2]) * f;
+        const k = Math.min(Math.max((s - ROCK_SLOPE[0]) / (ROCK_SLOPE[1] - ROCK_SLOPE[0]), 0), 1);
+        r += (ROCK[0] - r) * k;
+        g += (ROCK[1] - g) * k;
+        b += (ROCK[2] - b) * k;
     }
     if (m > 0.5) {
         const f = (m - 0.5) * 2; // weiche Fahrbahnkante
@@ -287,10 +295,23 @@ function terrainColor(out, o, hm, m) {
     out[o + 2] = b;
 }
 
+// Hangneigung |∇h| in m/m aus dem Readback (zentrale Differenzen, Kanten geclamped) — einmal pro Regeneration
+let slope = new Float32Array(RES * RES);
+function computeSlope() {
+    const px = MAP / RES, k = params.maxH / (2 * px);
+    for (let y = 0; y < RES; y++) for (let x = 0; x < RES; x++) {
+        const xl = Math.max(x - 1, 0), xr = Math.min(x + 1, RES - 1);
+        const yu = Math.max(y - 1, 0), yd = Math.min(y + 1, RES - 1);
+        const gx = (heights[y * RES + xr] - heights[y * RES + xl]) * k;
+        const gy = (heights[yd * RES + x] - heights[yu * RES + x]) * k;
+        slope[y * RES + x] = Math.hypot(gx, gy);
+    }
+}
+
 function updatePreview() {
     const d = pimg.data;
     for (let i = 0; i < RES * RES; i++) {
-        terrainColor(d, i * 4, heights[i] * params.maxH, roadMask[i]);
+        terrainColor(d, i * 4, heights[i] * params.maxH, roadMask[i], slope[i]);
         d[i * 4 + 3] = 255;
     }
     pctx.putImageData(pimg, 0, 0);
@@ -315,6 +336,8 @@ function sampleBilinear(buf, u, v) {
     return top * (1 - ty) + bot * ty;
 }
 
+const srgbToLinear = c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+
 function buildTerrainMesh() {
     const pos = new Float32Array(TN * TN * 3);
     const col = new Float32Array(TN * TN * 3);
@@ -326,10 +349,11 @@ function buildTerrainMesh() {
             pos[o] = -MAP / 2 + u * MAP;
             pos[o + 1] = sampleBilinear(heights, u, v) * params.maxH;
             pos[o + 2] = -MAP / 2 + v * MAP;
-            terrainColor(col, o, pos[o + 1], sampleBilinear(roadMask, u, v));
-            col[o] /= 255;
-            col[o + 1] /= 255;
-            col[o + 2] /= 255;
+            terrainColor(col, o, pos[o + 1], sampleBilinear(roadMask, u, v), sampleBilinear(slope, u, v));
+            // Vertex-Farben liest three als linear → sRGB-Rampe umrechnen, sonst doppelt aufgehellt (blass)
+            col[o] = srgbToLinear(col[o] / 255);
+            col[o + 1] = srgbToLinear(col[o + 1] / 255);
+            col[o + 2] = srgbToLinear(col[o + 2] / 255);
         }
     }
     let ii = 0;
