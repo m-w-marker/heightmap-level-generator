@@ -7,7 +7,7 @@ function check(cond, msg) {
     if (!cond) { console.error('FAIL:', msg); fail++; }
 }
 // Map-Größe als Argument (→ Plan/MapGroesse.md): Positionen und Grundhöhe skalieren mit s, Gefälle/Formen in Metern
-const N = 128, M = +(process.argv[2] ?? 400), cs = M / N, s = M / 400;
+const M = +(process.argv[2] ?? 400), s = M / 400, N = 128 * s, cs = M / N; // Raster wächst mit wie grids().pre
 const OPTS = { waterLevel: 0, rimZone: 40, riverCatchment: 1, riverWidth: 6, lakeArea: 50 };
 // f(x, y) in m über Zellzentren; Rauschen: deterministisches LCG
 function field(f, noise = 0) {

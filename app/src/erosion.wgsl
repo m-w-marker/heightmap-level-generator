@@ -1,4 +1,4 @@
-// Erosion auf EROSION_RES² (→ Plan/Erosion.md): virtuelle Rohre (Mei 2007) + thermisch.
+// Erosion auf n² Zellen (→ Plan/Erosion.md, Plan/Aufloesung.md): virtuelle Rohre (Mei 2007) + thermisch.
 // Jeder Kernel schreibt nur die eigene Zelle und liest Nachbarn aus einem Puffer, den er nicht schreibt → deterministisch.
 // Je Iteration: flux → water → erode (b → bTmp) → carry (sedTmp → state.s) → thermal (bTmp → b); am Ende finish.
 
@@ -16,9 +16,9 @@ struct E {
     depthMax: f32,  // m: tieferes Wasser trägt nicht ab → Rinnen am Hang statt Gräben in den Tälern
     talus: f32,     // tan Schuttwinkel
     thermal: f32,   // Anteil des Überschusses über dem Schuttwinkel, der je Schritt rutscht (≤ 1/16 stabil)
+    n: f32,         // Zellen je Kante, wächst mit der Map (→ Plan/Aufloesung.md); Dispatch genau n/16 → keine Randprüfung
 };
 
-const N = 512u; // = EROSION_RES in uniforms.js
 const MIN_TILT = 0.05; // sin: auch fast ebenes Gelände trägt etwas Sediment
 
 @group(0) @binding(0) var<uniform> e: E;
@@ -31,7 +31,7 @@ const MIN_TILT = 0.05; // sin: auch fast ebenes Gelände trägt etwas Sediment
 @group(0) @binding(7) var<storage, read_write> delta: array<f32>;            // Start: Roh-Terrain, Ende: erodiert − roh
 
 fn id(x: i32, y: i32) -> u32 {
-    return u32(y) * N + u32(x);
+    return u32(y) * u32(e.n) + u32(x);
 }
 
 // Rohr-Fluss zu den 4 Nachbarn aus dem Wasserspiegel-Gefälle; außerhalb = trocken auf gleicher Höhe → offener Rand
@@ -39,7 +39,7 @@ fn id(x: i32, y: i32) -> u32 {
 fn fluxStep(@builtin(global_invocation_id) g: vec3<u32>) {
     let x = i32(g.x);
     let y = i32(g.y);
-    let n = i32(N);
+    let n = i32(e.n);
     let i = id(x, y);
     let d = state[i].x + e.rain;
     let H = b[i] + d;
@@ -59,7 +59,7 @@ fn fluxStep(@builtin(global_invocation_id) g: vec3<u32>) {
 fn water(@builtin(global_invocation_id) g: vec3<u32>) {
     let x = i32(g.x);
     let y = i32(g.y);
-    let n = i32(N);
+    let n = i32(e.n);
     let i = id(x, y);
     var inL = 0.0;
     var inR = 0.0;
@@ -85,7 +85,7 @@ fn water(@builtin(global_invocation_id) g: vec3<u32>) {
 fn erode(@builtin(global_invocation_id) g: vec3<u32>) {
     let x = i32(g.x);
     let y = i32(g.y);
-    let n = i32(N);
+    let n = i32(e.n);
     let i = id(x, y);
     let gx = (b[id(min(x + 1, n - 1), y)] - b[id(max(x - 1, 0), y)]) / (2.0 * e.cell);
     let gy = (b[id(x, min(y + 1, n - 1))] - b[id(x, max(y - 1, 0))]) / (2.0 * e.cell);
@@ -119,7 +119,7 @@ fn share(f: f32, d0: f32) -> f32 {
 fn carry(@builtin(global_invocation_id) g: vec3<u32>) {
     let x = i32(g.x);
     let y = i32(g.y);
-    let n = i32(N);
+    let n = i32(e.n);
     let i = id(x, y);
     let st = state[i];
     let f = flux[i];
@@ -136,7 +136,7 @@ fn carry(@builtin(global_invocation_id) g: vec3<u32>) {
 fn thermal(@builtin(global_invocation_id) g: vec3<u32>) {
     let x = i32(g.x);
     let y = i32(g.y);
-    let n = i32(N);
+    let n = i32(e.n);
     let h = bTmp[id(x, y)];
     var dh = 0.0;
     for (var dy = -1; dy <= 1; dy++) {

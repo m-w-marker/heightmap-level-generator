@@ -32,17 +32,17 @@ struct Params {
     erosionOn: f32, // 1 = erosionDelta addieren, 0 = heutiger Pfad bitgleich (→ Plan/Erosion.md)
     waterLevel: f32,
     riverCount: f32,
+    erosionRes: f32, // Raster von erosionDelta, wächst mit der Map (→ Plan/Aufloesung.md)
+    lakeRes: f32,    // Raster des See-Spiegelfelds = Prepass
 };
 
 // = MAX_ROADS / ROAD_POINTS / MAX_TOWNS in roadgen.js (Layout-Test prüft); roads-Array-Größe = Produkt
 const MAX_ROADS = 16u;
 const ROAD_POINTS = 32u;
 const MAX_TOWNS = 8u;
-const EROSION_RES = 512u; // = EROSION_RES in uniforms.js / erosion.wgsl
 const MAX_RIVERS = 16u;   // = MAX_RIVERS / RIVER_POINTS / RIVER_WET in hydro.js
 const RIVER_POINTS = 32u;
 const RIVER_WET = 1.0;    // m: Wasser reicht über das Bett hinaus
-const LAKE_RES = 128u;    // = PRE (Prepass) in uniforms.js: See-Spiegelfeld
 const RIVER_DEPTH = 0.5;  // Tiefe je m halber Breite (= ¼ Breite)
 const RIVER_BANK = 0.577; // tan 30°: Ufer über dem Spiegel, danach steiler wie die Straßen-Böschung
 const LAKE_EDGE = 0.25;   // bilineare Seemaske: Wasser bis ~¾ Zelle über die Seezellen hinaus
@@ -71,9 +71,9 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read_write> heights: array<f32>;
 @group(0) @binding(2) var<storage, read_write> roadMask: array<f32>;
-@group(0) @binding(3) var<storage, read> erosionDelta: array<f32>; // EROSION_RES², erodiert − roh in m
+@group(0) @binding(3) var<storage, read> erosionDelta: array<f32>; // erosionRes², erodiert − roh in m
 @group(0) @binding(4) var<storage, read_write> water: array<f32>;  // res², Spiegel von See/Fluss in m, 0 = nur Meer
-@group(0) @binding(5) var<storage, read> lakes: array<f32>;        // LAKE_RES², See-Spiegel in m (0 = kein See)
+@group(0) @binding(5) var<storage, read> lakes: array<f32>;        // lakeRes², See-Spiegel in m (0 = kein See)
 
 // --- Noise ---
 
@@ -190,9 +190,9 @@ fn raw(@builtin(global_invocation_id) gid: vec3<u32>) {
     heights[gid.y * res + gid.x] = rawTerrain(world(gid.xy, res));
 }
 
-// erosionDelta bilinear an w (Pixelzentren bei (k + 0.5) / EROSION_RES wie sampleBilinear in export.js, Kanten geclamped)
+// erosionDelta bilinear an w (Pixelzentren bei (k + 0.5) / erosionRes wie sampleBilinear in export.js, Kanten geclamped)
 fn erosionAt(w: vec2<f32>) -> f32 {
-    let n = i32(EROSION_RES);
+    let n = i32(u.params.erosionRes);
     let f = w / u.params.mapSize * f32(n) - 0.5;
     let p0 = vec2<i32>(floor(f));
     let t = f - floor(f);
@@ -263,15 +263,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Straßen; Bett parabolisch bis Spiegel − Tiefe, daneben Ufer per bank() über dem Spiegel; nur abtragen, nie aufschütten.
     // Straßen danach → Damm an Kreuzungen
     var wl = u.params.waterLevel;
-    let lf = w / u.params.mapSize * f32(LAKE_RES) - 0.5;
+    let lakeN = u32(u.params.lakeRes);
+    let lf = w / u.params.mapSize * f32(lakeN) - 0.5;
     let l0 = vec2<i32>(floor(lf));
     let lt = lf - floor(lf);
     var lakeW = 0.0;
     var lakeL = 0.0;
     for (var k = 0; k < 4; k++) {
         let o = vec2<i32>(k & 1, k >> 1);
-        let c = clamp(l0 + o, vec2<i32>(0), vec2<i32>(i32(LAKE_RES) - 1));
-        let lv = lakes[u32(c.y) * LAKE_RES + u32(c.x)];
+        let c = clamp(l0 + o, vec2<i32>(0), vec2<i32>(i32(lakeN) - 1));
+        let lv = lakes[u32(c.y) * lakeN + u32(c.x)];
         let wt = select(1.0 - lt.x, lt.x, o.x == 1) * select(1.0 - lt.y, lt.y, o.y == 1);
         lakeW += select(0.0, wt, lv > 0.0);
         lakeL = max(lakeL, lv);

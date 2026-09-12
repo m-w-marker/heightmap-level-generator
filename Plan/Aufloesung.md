@@ -32,8 +32,11 @@ Alle Raster (Heightmap, Mesh, Erosion, Straßen/Hydrologie) wachsen mit; bei 400
 4. A4 Doku (`projekt.md`, `wgsl.md`, README) → Prüfung: `check`
 
 ## Abgeschlossen
-- [ ] A1 Raster + Uniforms — geprüft am
-- [ ] A2 main.js variabel — geprüft am
+- [x] A1 Raster + Uniforms (`grids()`, Params `erosionRes`/`lakeRes` → roads weiter ab Byte 128, erosion `e.n`, Puffer auf
+  Maximum; Layout-Test: grids(400) = 1024/512/512/128, 200–1000 m glatt durch 16 bei 0,390625 m/px) — geprüft am 2026-09-12
+- [x] A2 main.js variabel (zusammen mit A1, erst beides lauffähig; Vorschau/Textur neu bei Größenwechsel, Export „native“,
+  Tests bei 800 m mit mitwachsendem Raster; Wasser-Mesh direkt in Puffer + Normale oben: 630 → 40 ms bei 1000 m;
+  400 m: heights + roadMask + Vorschau-Hash bitgleich; 200/700/1000 m ohne WebGPU-Fehler) — geprüft am 2026-09-12
 - [ ] A3 headless 400 vs. 1000 — geprüft am
 - [ ] A4 Doku — geprüft am
 

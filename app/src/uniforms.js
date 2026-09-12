@@ -66,21 +66,27 @@ export const PARAM_FIELDS = {
     erosionOn: p => p.erosionOn ? 1 : 0,   // erosionDelta addieren (→ Plan/Erosion.md)
     waterLevel: p => p.waterLevel,         // Wasserspiegel-Ausgang: Meer (→ Plan/Fluesse.md)
     riverCount: p => p.riverCount,         // Flüsse aus hydrology(), 0 im Prepass
+    erosionRes: p => grids(p.mapSize).ero, // Raster von erosionDelta (→ Plan/Aufloesung.md)
+    lakeRes: p => grids(p.mapSize).pre,    // Raster des See-Spiegelfelds = Prepass
 };
 
-// Prepass-Auflösung (Routing, Hydrologie) = LAKE_RES in heightmap.wgsl (See-Spiegelfeld)
-export const PRE = 128;
-
-// Festes Erosions-Gitter (→ Plan/Erosion.md): unabhängig von der Ausgabe-Auflösung = EROSION_RES in den WGSL-Modulen
-export const EROSION_RES = 512;
+// Raster je Map-Größe (→ Plan/Aufloesung.md): ein Pixel bleibt PX_M (400 m / 1024 px); Vielfache von 128 → alle Dispatches
+// glatt durch 16. Heightmap res, Mesh tn = res/2, Erosion ero = res/2 (→ Plan/Erosion.md), Prepass/Routing/Hydrologie pre = res/8.
+// Größen außerhalb RES_MIN…RES_MAX (geladene JSON) werden geklemmt → Pixel weicht dann ab
+export const PX_M = 400 / 1024;
+export const RES_MIN = 512, RES_MAX = 2560;
+export function grids(mapSize) {
+    const res = Math.min(Math.max(Math.round(mapSize / PX_M / 128) * 128, RES_MIN), RES_MAX);
+    return { res, tn: res / 2, ero: res / 2, pre: res / 8 };
+}
 
 // 1:1 zu struct E in erosion.wgsl; p = params + mapSize, erode = false → nur Wasser (Flow-Map), Terrain bleibt
 const EROSION_CAPACITY = 0.05; // Kc bei erosionStrength 100 %
 export const EROSION_FIELDS = {
-    cell: p => p.mapSize / EROSION_RES,
+    cell: p => p.mapSize / grids(p.mapSize).ero,
     dt: () => 0.1,
     rain: () => 0.0005,
-    pipe: p => 9.81 * p.mapSize / EROSION_RES, // A = l² → A·g/l = g·l
+    pipe: p => 9.81 * p.mapSize / grids(p.mapSize).ero, // A = l² → A·g/l = g·l
     fluxKeep: () => 0.99,
     capacity: (p, erode) => erode ? EROSION_CAPACITY * p.erosionStrength / 100 : 0,
     dissolve: () => 0.3,
@@ -90,6 +96,7 @@ export const EROSION_FIELDS = {
     depthMax: () => 0.3,
     talus: p => Math.tan(Math.min(p.screeAngle, 89) * Math.PI / 180),
     thermal: (p, erode) => erode ? 0.05 : 0,
+    n: p => grids(p.mapSize).ero, // Zellen je Kante
 };
 export const EROSION_FLOATS = Math.ceil(Object.keys(EROSION_FIELDS).length / 4) * 4; // uniform-Struct auf 16 B aufgerundet
 export function encodeErosion(p, erode, out) {

@@ -5,7 +5,7 @@ import { generateRoads, planNetwork, sampleTerrain, MAX_ROADS, ROAD_POINTS } fro
 // Map-Größe als Argument (→ Plan/MapGroesse.md): Positionen skalieren mit s, Formgrößen bleiben in Metern
 const seed = 1337;
 const mapSize = +(process.argv[2] ?? 400), s = mapSize / 400;
-const N = 128;
+const N = 128 * s; // Raster wächst mit wie grids().pre (→ Plan/Aufloesung.md)
 const opts = {
     waterLevel: 15, roadOffset: 2, roadTolerance: 0.7, levelSmoothing: 12, slopePenalty: 5, waterAvoid: 2, roadMaxGrade: 12,
     rimZone: 45, townCount: 6, townSpacing: 70, exitCount: 3, extraLinks: 2, reuse: 0.4,

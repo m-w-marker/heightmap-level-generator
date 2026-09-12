@@ -59,7 +59,7 @@ export const TABS = {
     },
     World: {
         Map: [
-            ['mapSize', 'Map size (m)', 200, 1000, 50, 'Edge length of the square map. Hills, roads and rivers keep their size in metres; a larger map shows more of the same landscape at coarser pixels (1024 px).'],
+            ['mapSize', 'Map size (m)', 200, 1000, 50, 'Edge length of the square map. Hills, roads and rivers keep their size in metres; a larger map shows more of the same landscape at the same detail (0.39 m per pixel, 2560 px at 1000 m) and takes longer to generate.'],
         ],
         'Water & ground': [
             ['waterLevel', 'Water level (m)', 0, 50, 0.5, 'Everything below is water.'],
@@ -173,8 +173,9 @@ export function buildPanel(params, cb) {
         setTimeout(() => { link.textContent = 'Link'; }, 1200);
     });
     // Export-Größe: Einstellung, kein Menü → Auswahl bleibt stehen
-    const size = el('select', { id: 'exportRes', title: 'Export size in pixels (heightmap, RAW, splatmap, metadata)' },
-        ...cb.exportSizes.map(n => el('option', { value: n, textContent: `${n} px` })));
+    // 0 = native: aktuelle Auflösung, wächst mit der Map-Größe
+    const size = el('select', { id: 'exportRes', title: 'Export size in pixels (heightmap, RAW, splatmap, masks, metadata); native = 0.39 m per pixel, grows with the map size' },
+        ...cb.exportSizes.map(n => el('option', { value: n, textContent: n ? `${n} px` : 'native' })));
     size.addEventListener('change', () => cb.exportSize(+size.value));
     const status = el('div',{ id: 'status', className: 'row', title: 'Last generation: GPU passes incl. readback, road network, total' });
     const toolbar = el('div', { className: 'toolbar' },

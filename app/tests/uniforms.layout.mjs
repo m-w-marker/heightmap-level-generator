@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, RIVERS_OFFSET, UNIFORM_FLOATS, EROSION_RES, EROSION_FIELDS, EROSION_FLOATS, PRE, encodeUniforms, encodeErosion } from '../src/uniforms.js';
+import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, RIVERS_OFFSET, UNIFORM_FLOATS, EROSION_FIELDS, EROSION_FLOATS, grids, RES_MIN, RES_MAX, encodeUniforms, encodeErosion } from '../src/uniforms.js';
 import { MAX_ROADS, ROAD_POINTS, MAX_TOWNS } from '../src/roadgen.js';
 import { MAX_RIVERS, RIVER_POINTS, RIVER_WET } from '../src/hydro.js';
 
@@ -42,8 +42,8 @@ check(UNIFORM_FLOATS === RIVERS_OFFSET + 4 * MAX_RIVERS * RIVER_POINTS, `UNIFORM
 check(UNIFORM_FLOATS * 4 <= 65536, `Uniform ${UNIFORM_FLOATS * 4} B ≤ 64 KiB (maxUniformBufferBindingSize)`);
 
 // WGSL-Konstanten der Loops == JS
-for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS], ['MAX_TOWNS', MAX_TOWNS], ['EROSION_RES', EROSION_RES],
-    ['MAX_RIVERS', MAX_RIVERS], ['RIVER_POINTS', RIVER_POINTS], ['LAKE_RES', PRE]]) {
+for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS], ['MAX_TOWNS', MAX_TOWNS],
+    ['MAX_RIVERS', MAX_RIVERS], ['RIVER_POINTS', RIVER_POINTS]]) {
     const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)u;`));
     check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
 }
@@ -51,7 +51,22 @@ for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS
     const m = wgsl.match(/const RIVER_WET\s*=\s*([\d.]+);/);
     check(!!m && Number(m[1]) === RIVER_WET, `WGSL const RIVER_WET == ${RIVER_WET} (ist ${m ? m[1] : '–'})`);
 }
-check(/lakes\[u32\(c\.y\) \* LAKE_RES/.test(wgsl) && /rL = mix\(a\.z, b\.z/.test(wgsl) && /rW = mix\(a\.w, b\.w/.test(wgsl), 'WGSL liest See-Feld mit LAKE_RES, Fluss-Spiegel aus .z, halbe Breite aus .w');
+check(/lakeN = u32\(u\.params\.lakeRes\)/.test(wgsl) && /lakes\[u32\(c\.y\) \* lakeN/.test(wgsl) && /n = i32\(u\.params\.erosionRes\)/.test(wgsl)
+    && /rL = mix\(a\.z, b\.z/.test(wgsl) && /rW = mix\(a\.w, b\.w/.test(wgsl), 'WGSL: See-Feld mit lakeRes, erosionDelta mit erosionRes, Fluss-Spiegel .z, halbe Breite .w');
+
+// Raster je Map-Größe (→ Plan/Aufloesung.md): 400 m = bisherige feste Werte; alle Raster glatt durch 16 (Dispatch 16×16)
+{
+    const g = grids(400);
+    check(g.res === 1024 && g.tn === 512 && g.ero === 512 && g.pre === 128, `grids(400) = 1024/512/512/128 (ist ${Object.values(g).join('/')})`);
+    for (let m = 200; m <= 1000; m += 50) {
+        const q = grids(m);
+        const ok = Object.values(q).every(v => v % 16 === 0) && Math.abs(m / q.res - 400 / 1024) < 1e-9;
+        check(ok, `grids(${m}): ${Object.values(q).join('/')} durch 16, ${(m / q.res).toFixed(4)} m/px`);
+    }
+    check(grids(50).res === RES_MIN && grids(5000).res === RES_MAX, 'grids außerhalb 200–1000 m geklemmt');
+    const p = PARAM_FIELDS.erosionRes({ mapSize: 700 }), l = PARAM_FIELDS.lakeRes({ mapSize: 700 });
+    check(p === grids(700).ero && l === grids(700).pre, 'Uniform erosionRes / lakeRes = grids');
+}
 
 // Erosion: struct E ↔ EROSION_FIELDS, Gitter-Konstante, Uniform-Größe auf 16 B (→ Plan/Erosion.md)
 {
@@ -60,8 +75,7 @@ check(/lakes\[u32\(c\.y\) \* LAKE_RES/.test(wgsl) && /rL = mix\(a\.z, b\.z/.test
     const fields = m ? m[1].split('\n').map(l => l.replace(/\/\/.*/, '').trim().replace(/,+$/, '')).filter(Boolean).map(l => l.split(':')[0].trim()) : [];
     check(JSON.stringify(fields) === JSON.stringify(Object.keys(EROSION_FIELDS)), `erosion.wgsl struct E == EROSION_FIELDS (${fields.length} vs ${Object.keys(EROSION_FIELDS).length})`);
     check(EROSION_FLOATS * 4 === Math.ceil(fields.length * 4 / 16) * 16, `EROSION_FLOATS ${EROSION_FLOATS} = struct E auf 16 B`);
-    const n = ero.match(/const N\s*=\s*(\d+)u;/);
-    check(!!n && Number(n[1]) === EROSION_RES, `erosion.wgsl const N == EROSION_RES ${EROSION_RES}`);
+    check(!/const N\s*=/.test(ero) && /u32\(e\.n\)/.test(ero), 'erosion.wgsl: Raster aus e.n statt Konstante');
     const out = new Float32Array(EROSION_FLOATS);
     encodeErosion({ mapSize: 400, erosionStrength: 50, erosionIterations: 10, screeAngle: 40 }, true, out);
     check(out.every(Number.isFinite), 'encodeErosion: alle Felder endlich');
