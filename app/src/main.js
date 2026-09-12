@@ -370,8 +370,9 @@ setRoadColor();
 
 // Fels-Anteil nach Hangneigung — geteilt von Farbrampe und Splatmap
 const rockWeight = s => Math.min(Math.max((s - ROCK_SLOPE[0]) / (ROCK_SLOPE[1] - ROCK_SLOPE[0]), 0), 1);
-// Fahrbahn-Anteil aus roadMask (weiche Kante) — geteilt von Farbrampe und Splatmap
-const roadWeight = m => Math.min(Math.max((m - 0.5) * 2, 0), 1);
+// Fahrbahn-Anteil aus roadMask (weiche Kante) — geteilt von Farbrampe und Splatmap. Ganze Maskenkante (1 m = 2 px): nur die
+// innere Hälfte war bei 0,5 m/px 1 px breit → Sägezahn am Straßenrand (→ Plan/Pixel05.md)
+const roadWeight = m => Math.min(Math.max(m, 0), 1);
 
 // Wasserspiegel eines Pixels: See/Fluss aus dem Readback, sonst das Meer (→ Plan/Fluesse.md)
 const spiegel = (w, waterLevel) => w || waterLevel;
@@ -403,7 +404,7 @@ function terrainColor(out, o, hm, m, s, rel, W) {
         g *= lit;
         b *= lit;
     }
-    if (m > 0.5) {
+    if (m > 0) {
         const f = roadWeight(m);
         r = r * (1 - f) + roadRGB[0] * f;
         g = g * (1 - f) + roadRGB[1] * f;
