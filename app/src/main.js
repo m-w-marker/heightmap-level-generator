@@ -683,6 +683,22 @@ const PRESETS = {
 PRESETS['Eroded mountains'] = { ...PRESETS.Mountains, erosionStrength: 70, erosionIterations: 400, screeAngle: 65 };
 // Flüsse folgen den Erosionsrinnen (→ Plan/Fluesse.md)
 PRESETS['River valley'] = { ...PRESETS['Rolling hills'], erosionStrength: 40, riverCatchment: 1.5, riverWidth: 7 };
+// Biom + Gelände + Straßen zusammen (→ Plan/Biome.md); Straßenfarbe des Bioms wie beim Wechsel im Tab Material
+const biome = b => ({ biome: b, roadColor: BIOMES[b].road });
+PRESETS.Steppe = { ...biome('steppe'), baseLevel: 21, hillAmp: 5, hillWave: 170, hillRoughness: 0.35, mountainAmp: 30,
+    mountainWave: 260, clusterWave: 320, mountainCoverage: 12, cliffDrop: 6, cliffCoverage: 15, rimAmp: 30, rimZone: 60,
+    erosionStrength: 25, riverCatchment: 2, riverWidth: 5, sandHeight: 0.8,
+    roadWidth: 7, roadOffset: 0.2, roadTolerance: 0.4, levelSmoothing: 14, roadMaxGrade: 8, slopePenalty: 5,
+    townCount: 4, townSpacing: 110, extraLinks: 1, exitCount: 2 };
+// Asphalt-Highway über Ebene mit Tafelbergen; baseLevel > waterLevel + cliffDrop/2 → trocken
+PRESETS['Desert highway'] = { ...biome('desert'), baseLevel: 36, hillAmp: 2.5, hillWave: 200, hillRoughness: 0.3,
+    mountainAmp: 0, mountainCoverage: 0, cliffDrop: 30, cliffWave: 140, cliffWidth: 8, cliffAreaWave: 260, cliffCoverage: 25,
+    rimAmp: 35, rimZone: 60, roadWidth: 10, roadSlope: 30, roadSlopeVar: 5, roadOffset: 0.3, roadTolerance: 0.3,
+    levelSmoothing: 25, roadMaxGrade: 6, slopePenalty: 8, townCount: 2, townSpacing: 150, clearingRadius: 20,
+    exitCount: 2, extraLinks: 0, reuse: 0.3 };
+PRESETS['Snow world'] = { ...biome('snow'), baseLevel: 20, hillAmp: 8, hillWave: 110, hillRoughness: 0.45, mountainAmp: 45,
+    mountainCoverage: 25, cliffDrop: 8, cliffCoverage: 10, rimAmp: 60, erosionStrength: 30, screeAngle: 70,
+    riverCatchment: 2, riverWidth: 6, rockSlope: 40, townCount: 4, slopePenalty: 6 };
 function applyPreset(overrides) {
     Object.assign(params, DEFAULTS, overrides);
     setRoadColor();

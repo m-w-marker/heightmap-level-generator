@@ -29,15 +29,15 @@ const SETS = {
         road: { src: 'polyhaven', id: 'asphalt_02' },
     },
     desert: {
-        ground: { src: 'polyhaven', id: 'sand_01' },
+        ground: { src: 'polyhaven', id: 'red_sand' }, // sand_01 kachelt auf großen Flächen sichtbar
         rock: { src: 'polyhaven', id: 'sandstone_cracks' },
         scree: { src: 'polyhaven', id: 'gravelly_sand' },
         shore: { src: 'polyhaven', id: 'mud_cracked_dry_riverbed_002' }, // Salzpfanne
-        top: { src: 'polyhaven', id: 'red_sand' },
+        top: { src: 'polyhaven', id: 'sand_01' },
         road: { src: 'polyhaven', id: 'asphalt_01' },
     },
     snow: {
-        ground: { src: 'polyhaven', id: 'snow_02' },
+        ground: { src: 'ambientcg', id: 'Snow006' }, // snow_02: dunkle Zweige wiederholen sich
         rock: { src: 'polyhaven', id: 'rock_face_03' },
         scree: { src: 'polyhaven', id: 'rocks_ground_05' },
         shore: { src: 'ambientcg', id: 'Ice002' },

@@ -43,7 +43,7 @@ export const TABS = {
             ['roadMaxGrade', 'Max grade (%)', 4, 30, 1, 'Steepest allowed climb; a steeper step becomes a ramp.'],
         ],
         'Road edges': [
-            ['roadWidth', 'Width (m)', 1, 5, 0.5, 'Width of the driving surface.'],
+            ['roadWidth', 'Width (m)', 1, 12, 0.5, 'Width of the driving surface; ~10 m = two-lane highway.'],
             ['roadSlope', 'Bank angle (°)', 15, 60, 1, 'Slope of cuts and fills right next to the road.'],
             ['roadSlopeVar', 'Angle variation (°)', 0, 30, 1, 'Varies the bank angle along the road: soft shoulder vs. sharp edge.'],
             ['roadTolerance', 'Follow terrain (m)', 0, 3, 0.1, 'How far the road may ride up and down with the terrain before cutting.'],
