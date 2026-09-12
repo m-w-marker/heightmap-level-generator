@@ -3,6 +3,8 @@ paths:
   - "app/src/heightmap.wgsl"
   - "app/src/uniforms.js"
   - "app/src/main.js"
+  - "app/src/erosion.wgsl"
+  - "app/src/erosion.js"
   - "app/tests/**"
 ---
 # Thema: WGSL-Compute & Uniform-Layout
@@ -19,7 +21,13 @@ paths:
 - NICHT den Noise-Hash ändern, ohne `SAVE_VERSION` (main.js) hochzuzählen, `tests/noise.mjs` nachzuziehen und die Statistik in `uniforms.js` neu zu messen.
 - NICHT `tanh` mit unbegrenztem Argument aufrufen, sondern auf ±10 klemmen. Manche GPUs rechnen `tanh` über `exp` → Überlauf → NaN in der Heightmap.
 - NICHT Lichtungen als exakten Kreis mit hartem `clamp` formen, sondern Radius per Noise variieren und weich sättigen (`e·tanh(Δ/e)`). Der Kreis mit Knick am Rand liest sich von oben sofort als gestanzte Scheibe.
-- NICHT zwischen `writeBuffer`, Dispatch und Readback-Kopie ein `await` setzen (`computeMap`). Seed-Vorschau und Regeneration teilen Uniform- und Storage-Puffer und laufen überlappend; nur die ununterbrochene Folge hält die Queue-Reihenfolge je Pass richtig.
+- NICHT zwischen `writeBuffer`, Dispatch und Readback-Kopie ein `await` setzen (`computeMap`). Uniform- und Storage-Puffer sind geteilt; nur die ununterbrochene Folge hält die Queue-Reihenfolge je Pass richtig.
+- NICHT GPU-Folgen (`computeMap`, Flow-Export) überlappend starten, sondern über `serial()`. `erosion.delta` muss über das await des Prepass bis zum Final-Pass stehen bleiben; eine parallele Seed-Vorschau überschreibt es.
+- NICHT `erosionDelta` sampeln, wenn die Erosion aus ist (`erosionOn = 0`). Nur der unveränderte Pfad hält alte Presets, Saves und Links bitgleich.
+- NICHT in einem Erosions-Kernel Nachbarn aus einem Puffer lesen, den derselbe Kernel schreibt, sondern Ping-Pong (`b`/`bTmp`, `sedTmp`). Sonst hängt das Ergebnis von der Thread-Reihenfolge ab → nicht deterministisch.
+- NICHT Sediment semi-Lagrange verschieben, sondern mit demselben Anteil wie das Wasser über die Rohre (`carry`). Semi-Lagrange ist nicht massenerhaltend und verlor ~40 % des bewegten Materials.
+- NICHT mehr als 8 Storage-Puffer in ein Modul binden (WebGPU-Default `maxStorageBuffersPerShaderStage`). Erosion packt Wasser, Sediment, |v| und Wasser-vor-Fluss in ein `vec4`.
+- NICHT `struct E` (erosion.wgsl) ändern, ohne `EROSION_FIELDS` im selben Zug anzupassen. Die Feldreihenfolge ist der Float-Index, der Layout-Test prüft beide.
 - NICHT Winkel ± Variation hinterher klemmen, sondern die Variation auf den Abstand zur Grenze begrenzen. Sonst klebt der Winkel an 10° bzw. 60° und der Regler wirkt an den Enden nicht.
 
 ## Layout-Regeln (uniform)
@@ -27,8 +35,9 @@ paths:
 2. Offset von Mitglied i+1 = `roundUp(Ende von i, Align(i+1))`.
 3. Nach einem Struct-Mitglied S liegt das nächste bei `≥ roundUp(16, Größe(S))`. naga rundet hier nicht auf, sondern meldet einen Fehler.
 
-Aktuell: `Params` = 27 × f32 = 108 B → `roads` ab Byte 112 = Float-Index 28; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0);
+Aktuell: `Params` = 28 × f32 = 112 B → `roads` ab Byte 112 = Float-Index 28; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0);
 `towns` = `MAX_TOWNS` vec4 (x, y, level m, 0) direkt dahinter (`TOWNS_OFFSET`), Puffer = `UNIFORM_FLOATS`. Layout-Test `tests/uniforms.layout.mjs`.
+Erosion: `struct E` = `EROSION_FIELDS` (nur f32), Puffer `EROSION_FLOATS` = auf 16 B aufgerundet; Gitter `EROSION_RES` in uniforms.js, heightmap.wgsl und erosion.wgsl (`N`) gleich.
 
 ## Symptome
 Readback nur Nullen oder „road level Infinity“ → Shader-Modul abgelehnt (Browser-Konsole) oder Params-Reihenfolge JS ≠ WGSL

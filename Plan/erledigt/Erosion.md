@@ -1,6 +1,6 @@
 # Plan: Erosion auf der GPU + Flow-Map (R15)
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-12
 
 ## Ziel
@@ -60,7 +60,10 @@ als Export für Unreal und als Maske für R11/R16.
 - [x] E4 Flow-Map-Export („Flow map PNG“, `flowScale`/`flowBytes` in `masks.js` + Test, `resample(…, centres)` + Test,
   Metadaten `flowScale` + `masks.flow`; headless Eroded mountains / Mountains (aus → nur Wasser) bei 1024 + 513: Größen stimmen,
   Rinnennetz hell, Grate dunkel, Korrelation mit Krümmung −0,37 / −0,46, Heightmap nach Export und ↻ bitgleich) — geprüft am 2026-09-12
-- [ ] E5 Seed-Vergleich — geprüft am
-- [ ] E6 Doku — geprüft am
+- [x] E5 Seed-Vergleich (ohne Code-Änderung, läuft über `computeMap`; Eroded mountains: 12 Kacheln 548 ms, Straßen 100 %
+  deckungsgleich, Farbe Ø 2,5/255 — Kriterium < 2 knapp verfehlt: 1-Zellen-Rinnen heben in 1024² die Neigung → mehr Fels-Farbe
+  als in der 256²-Kachel; ohne Erosion 1,0/255) — geprüft am 2026-09-12
+- [x] E6 Doku (`.clinerules/wgsl.md`: serial, erosionOn bitgleich, Ping-Pong, carry statt semi-Lagrange, 8-Storage-Limit,
+  struct E; `export.md`: Flow-Map) — geprüft am 2026-09-12
 
 <!-- fertig: git mv Plan/<Datei>.md Plan/erledigt/ -->

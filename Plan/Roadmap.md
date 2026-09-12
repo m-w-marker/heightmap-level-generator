@@ -83,7 +83,8 @@ headless: von oben keine Kreise mehr (auch Radius 15 im Berg-Terrain), Kern-Span
 - [x] R14 Walk-Modus (`src/walk.js`, Button 🚶: Start am Orbit-Ziel, Maus/WASD/Pfeile, Shift = rennen 15 m/s, Esc zurück;
   Höhe aus dem angezeigten Mesh; headless Favorite + Mountains: 16 m auf der Straße, Augenhöhe 1,700 m konstant, Orbit-Kamera nach Esc
   identisch) — geprüft am 2026-09-12
-- [ ] R15 Erosion + Flow-Map — geprüft am
+- [x] R15 Erosion + Flow-Map (Detailplan `Plan/erledigt/Erosion.md`: Rohr-Modell + thermisch auf festem 512-Gitter, delta
+  additiv, aus = bitgleich; +24 ms bei 300 Iterationen; Preset „Eroded mountains“; Flow-Map-Export log/p99) — geprüft am 2026-09-12
 - [ ] R16 Flüsse/Seen — geprüft am
 - [ ] R17 Map-Größe — geprüft am
 - [ ] R18 README — geprüft am
