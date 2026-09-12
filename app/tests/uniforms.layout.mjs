@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, UNIFORM_FLOATS, encodeUniforms } from '../src/uniforms.js';
+import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, UNIFORM_FLOATS, EROSION_RES, encodeUniforms } from '../src/uniforms.js';
 import { MAX_ROADS, ROAD_POINTS, MAX_TOWNS } from '../src/roadgen.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -39,7 +39,7 @@ check(TOWNS_OFFSET === ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS, `TOWNS_OFFSET
 check(UNIFORM_FLOATS === TOWNS_OFFSET + 4 * MAX_TOWNS, `UNIFORM_FLOATS ${UNIFORM_FLOATS} == Ende von towns`);
 
 // WGSL-Konstanten der Loops == JS
-for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS], ['MAX_TOWNS', MAX_TOWNS]]) {
+for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS], ['MAX_TOWNS', MAX_TOWNS], ['EROSION_RES', EROSION_RES]]) {
     const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)u;`));
     check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
 }

@@ -62,7 +62,11 @@ export const PARAM_FIELDS = {
     roadTolerance: p => p.roadTolerance,
     clearingCount: p => p.clearingCount,   // platzierte Orte (≤ townCount), 0 im Prepass
     clearingRadius: p => p.clearingRadius, // m flach um den Ort, Böschung wie an der Straße
+    erosionOn: p => p.erosionOn ? 1 : 0,   // erosionDelta addieren (→ Plan/Erosion.md)
 };
+
+// Festes Erosions-Gitter (→ Plan/Erosion.md): unabhängig von der Ausgabe-Auflösung = EROSION_RES in den WGSL-Modulen
+export const EROSION_RES = 512;
 
 // Float-Index von roads: Params-Felder auf die 16-Byte-Align des vec4-Arrays aufgefüllt; towns direkt dahinter
 export const ROADS_OFFSET = Math.ceil(Object.keys(PARAM_FIELDS).length / 4) * 4;

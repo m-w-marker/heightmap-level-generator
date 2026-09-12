@@ -8,7 +8,7 @@ import { quantize16, encodeR16, sampleBilinear, resample } from './export.js';
 import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
-import { encodeUniforms, UNIFORM_FLOATS, autoMaxH } from './uniforms.js';
+import { encodeUniforms, UNIFORM_FLOATS, EROSION_RES, autoMaxH } from './uniforms.js';
 import { createWalk } from './walk.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
@@ -103,6 +103,7 @@ const heightBuf = device.createBuffer({
 });
 const uniformsBuf = device.createBuffer({ size: uniformsData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 const roadMaskBuf = device.createBuffer({ size: RES * RES * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+const erosionDeltaBuf = device.createBuffer({ size: EROSION_RES * EROSION_RES * 4, usage: GPUBufferUsage.STORAGE });
 
 const shaderModule = device.createShaderModule({ code: WGSL });
 const info = await shaderModule.getCompilationInfo();
@@ -118,6 +119,7 @@ const bind = device.createBindGroup({
         { binding: 0, resource: { buffer: uniformsBuf } },
         { binding: 1, resource: { buffer: heightBuf } },
         { binding: 2, resource: { buffer: roadMaskBuf } },
+        { binding: 3, resource: { buffer: erosionDeltaBuf } },
     ],
 });
 

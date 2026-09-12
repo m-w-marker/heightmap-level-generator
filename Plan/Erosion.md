@@ -46,7 +46,7 @@ als Export für Unreal und als Maske für R11/R16.
 6. E6 Doku: `.clinerules/wgsl.md` (Erosion-Layout, No-Gos) → Prüfung: `check` grün
 
 ## Abgeschlossen
-- [ ] E1 Shader-Umbau ohne Wirkung — geprüft am
+- [x] E1 Shader-Umbau ohne Wirkung (`rawTerrain`, Entry `raw`, `erosionOn`, Binding 3; 7 Presets heights + roadMask bitgleich) — geprüft am 2026-09-12
 - [ ] E2 Erosion-Kernels + Regler — geprüft am
 - [ ] E3 Tuning + Preset — geprüft am
 - [ ] E4 Flow-Map-Export — geprüft am

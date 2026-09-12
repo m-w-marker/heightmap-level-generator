@@ -29,12 +29,14 @@ struct Params {
     roadTolerance: f32,
     clearingCount: f32,
     clearingRadius: f32,
+    erosionOn: f32, // 1 = erosionDelta addieren, 0 = heutiger Pfad bitgleich (→ Plan/Erosion.md)
 };
 
 // = MAX_ROADS / ROAD_POINTS / MAX_TOWNS in roadgen.js (Layout-Test prüft); roads-Array-Größe = Produkt
 const MAX_ROADS = 16u;
 const ROAD_POINTS = 32u;
 const MAX_TOWNS = 8u;
+const EROSION_RES = 512u; // = EROSION_RES in uniforms.js / erosion.wgsl
 
 const SLOPE_VAR_WAVE = 40.0; // m
 const SLOPE_MIN = 0.1745;    // 10° in rad
@@ -56,6 +58,7 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read_write> heights: array<f32>;
 @group(0) @binding(2) var<storage, read_write> roadMask: array<f32>;
+@group(0) @binding(3) var<storage, read> erosionDelta: array<f32>; // EROSION_RES², erodiert − roh in m
 
 // --- Noise ---
 
@@ -139,15 +142,8 @@ fn bank(d: f32, s0: f32) -> f32 {
     return s0 * dc + dc * dc / (2.0 * BANK_CURVE) + sM * (d - dc);
 }
 
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let res = u32(u.params.res);
-    if (gid.x >= res || gid.y >= res) { return; }
-    let idx = gid.y * res + gid.x;
-
-    let uv = vec2<f32>(f32(gid.x) + 0.5, f32(gid.y) + 0.5) / f32(res);
-    let w = uv * u.params.mapSize; // Weltkoordinate in Metern
-
+// Roh-Terrain in m (Schichten 1–3) = Eingang der Erosion (→ Plan/Erosion.md); w = Weltkoordinate in m
+fn rawTerrain(w: vec2<f32>) -> f32 {
     // Amplituden, Schwellen und cliffWidth kommen auf der CPU normiert an (→ uniforms.js, Messwerte)
     // 1) Basisterain + Hügel
     var h = u.params.baseLevel + fbmGain(w * u.params.hillScale, layerKey(0u), 5, u.params.hillGain) * u.params.hillAmp;
@@ -162,6 +158,45 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let cMask = smoothstep(u.params.cliffThr - 0.15, u.params.cliffThr + 0.15, fbm(w * u.params.cliffMaskScale, layerKey(4u), 3));
     let band = max(u.params.cliffWidth * u.params.cliffScale, 0.02);
     h += cMask * (smoothstep(0.5 - band, 0.5 + band, cn) * 2.0 - 1.0) * u.params.cliffDrop * 0.5;
+    return h;
+}
+
+// Pixelzentrum → Weltkoordinate in m
+fn world(gid: vec2<u32>, res: u32) -> vec2<f32> {
+    let uv = vec2<f32>(f32(gid.x) + 0.5, f32(gid.y) + 0.5) / f32(res);
+    return uv * u.params.mapSize;
+}
+
+// Roh-Terrain res² in m nach heights (Erosions-Eingang, → Plan/Erosion.md)
+@compute @workgroup_size(16, 16)
+fn raw(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let res = u32(u.params.res);
+    if (gid.x >= res || gid.y >= res) { return; }
+    heights[gid.y * res + gid.x] = rawTerrain(world(gid.xy, res));
+}
+
+// erosionDelta bilinear an w (Pixelzentren bei (k + 0.5) / EROSION_RES wie sampleBilinear in export.js, Kanten geclamped)
+fn erosionAt(w: vec2<f32>) -> f32 {
+    let n = i32(EROSION_RES);
+    let f = w / u.params.mapSize * f32(n) - 0.5;
+    let p0 = vec2<i32>(floor(f));
+    let t = f - floor(f);
+    let a = clamp(p0, vec2<i32>(0), vec2<i32>(n - 1));
+    let b = clamp(p0 + 1, vec2<i32>(0), vec2<i32>(n - 1));
+    let top = mix(erosionDelta[a.y * n + a.x], erosionDelta[a.y * n + b.x], t.x);
+    let bot = mix(erosionDelta[b.y * n + a.x], erosionDelta[b.y * n + b.x], t.x);
+    return mix(top, bot, t.y);
+}
+
+@compute @workgroup_size(16, 16)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let res = u32(u.params.res);
+    if (gid.x >= res || gid.y >= res) { return; }
+    let idx = gid.y * res + gid.x;
+    let w = world(gid.xy, res);
+
+    var h = rawTerrain(w);
+    if (u.params.erosionOn > 0.5) { h += erosionAt(w); }
 
     // Böschungsneigung am Fahrbahnrand; schwankt entlang der Straße (Noise, Wellenlänge SLOPE_VAR_WAVE) → mal Schulter,
     // mal Abrisskante. Schwankung auf den Abstand zu SLOPE_MIN/MAX begrenzt (hinterher klemmen → Winkel klebt an der Grenze)
