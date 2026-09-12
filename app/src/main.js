@@ -3,7 +3,7 @@ import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildPanel } from './ui.js';
 import { encodePng } from './png.js';
-import { quantize16, encodeR16 } from './export.js';
+import { quantize16, encodeR16, sampleBilinear, resample } from './export.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, ROADS_OFFSET, autoMaxH } from './uniforms.js';
@@ -337,20 +337,6 @@ const TN = 512; // Vertex je Kante; 1 Unit = 1 m
 const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
 let terrain = null;
 
-// Bilinear aus dem 1024²-Readback (Pixelzentren bei (p+0.5)/RES, Kanten geclamped)
-function sampleBilinear(buf, u, v) {
-    const fx = u * RES - 0.5, fy = v * RES - 0.5;
-    const x0 = Math.floor(fx), y0 = Math.floor(fy);
-    const tx = fx - x0, ty = fy - y0;
-    const xa = Math.min(Math.max(x0, 0), RES - 1);
-    const xb = Math.min(Math.max(x0 + 1, 0), RES - 1);
-    const ya = Math.min(Math.max(y0, 0), RES - 1);
-    const yb = Math.min(Math.max(y0 + 1, 0), RES - 1);
-    const top = buf[ya * RES + xa] * (1 - tx) + buf[ya * RES + xb] * tx;
-    const bot = buf[yb * RES + xa] * (1 - tx) + buf[yb * RES + xb] * tx;
-    return top * (1 - ty) + bot * ty;
-}
-
 const srgbToLinear = c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 
 function buildTerrainMesh() {
@@ -362,9 +348,9 @@ function buildTerrainMesh() {
             const o = (j * TN + i) * 3;
             const u = i / (TN - 1), v = j / (TN - 1);
             pos[o] = -MAP / 2 + u * MAP;
-            pos[o + 1] = sampleBilinear(heights, u, v) * params.maxH;
+            pos[o + 1] = sampleBilinear(heights, RES, u, v) * params.maxH;
             pos[o + 2] = -MAP / 2 + v * MAP;
-            terrainColor(col, o, pos[o + 1], sampleBilinear(roadMask, u, v), sampleBilinear(slope, u, v), sampleBilinear(relief, u, v));
+            terrainColor(col, o, pos[o + 1], sampleBilinear(roadMask, RES, u, v), sampleBilinear(slope, RES, u, v), sampleBilinear(relief, RES, u, v));
             // Vertex-Farben liest three als linear → sRGB-Rampe umrechnen, sonst doppelt aufgehellt (blass)
             col[o] = srgbToLinear(col[o] / 255);
             col[o + 1] = srgbToLinear(col[o + 1] / 255);
@@ -500,6 +486,10 @@ window.addEventListener('keydown', e => {
     e.preventDefault();
 });
 
+// Export-Auflösung (→ Plan/Roadmap.md R7): RES = Original 1:1, 2ⁿ+1 = Unreal-Landscape-Größen (resample)
+const EXPORT_SIZES = [RES, RES / 2 + 1, RES + 1, 2 * RES + 1];
+let exportRes = RES;
+
 const panel = buildPanel(params, {
     change: scheduleGenerate,
     color: () => {
@@ -513,6 +503,8 @@ const panel = buildPanel(params, {
     save: saveSettings,
     load: () => loadInput.click(),
     link: copyLink,
+    exportSizes: EXPORT_SIZES,
+    exportSize: n => { exportRes = n; },
     exports: {
         'Heightmap PNG (16-bit)': exportPng16,
         'Heightmap RAW (.r16)': exportR16,
@@ -587,45 +579,53 @@ function exportPng() {
 }
 
 async function exportPng16() {
-    download(await encodePng(RES, RES, quantize16(heights), 1, 16), `heightmap-${params.seed}-16bit.png`);
+    const n = exportRes;
+    download(await encodePng(n, n, quantize16(resample(heights, RES, n)), 1, 16), `heightmap-${params.seed}-${n}-16bit.png`);
 }
 
 function exportR16() {
-    download(new Blob([encodeR16(quantize16(heights))], { type: 'application/octet-stream' }), `heightmap-${params.seed}-${RES}.r16`);
+    const n = exportRes;
+    download(new Blob([encodeR16(quantize16(resample(heights, RES, n)))], { type: 'application/octet-stream' }), `heightmap-${params.seed}-${n}.r16`);
 }
 
 // Splatmap RGBA: R Straße · G Fels · B Wasser + Ufer (bis zur Sand-Grenze der Farbrampe) · A Rest (Gras);
-// Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md)
+// Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md). Eingaben resamplen, nicht RGBA → Summe bleibt 255
 async function exportSplatmap() {
-    const px = new Uint8Array(RES * RES * 4), shore = STOPS[1][0];
-    for (let i = 0; i < RES * RES; i++) {
-        const h = heights[i] * params.maxH;
-        const road = roadWeight(roadMask[i]);
+    const n = exportRes, hs = resample(heights, RES, n), ms = resample(roadMask, RES, n), ss = resample(slope, RES, n);
+    const px = new Uint8Array(n * n * 4), shore = STOPS[1][0];
+    for (let i = 0; i < n * n; i++) {
+        const h = hs[i] * params.maxH;
+        const road = roadWeight(ms[i]);
         const wet = Math.min(Math.max(1 - (h - params.waterLevel) / shore, 0), 1);
         const water = (1 - road) * wet;
-        const rock = (1 - road) * (1 - wet) * rockWeight(slope[i]); // (1 − wet), nicht (1 − water): sonst Summe > 1
+        const rock = (1 - road) * (1 - wet) * rockWeight(ss[i]); // (1 − wet), nicht (1 − water): sonst Summe > 1
         const R = Math.floor(road * 255), G = Math.floor(rock * 255), B = Math.floor(water * 255);
         px[i * 4] = R;
         px[i * 4 + 1] = G;
         px[i * 4 + 2] = B;
         px[i * 4 + 3] = 255 - R - G - B; // floor → Summe ≤ 255, A ≥ 0
     }
-    download(await encodePng(RES, RES, px, 4, 8), `splatmap-${params.seed}.png`);
+    download(await encodePng(n, n, px, 4, 8), `splatmap-${params.seed}-${n}.png`);
 }
 
 // Maßstab + Konvention für die Engine, dazu alle Einstellungen (Save-Format) → reproduzierbar
 function exportMeta() {
+    const n = exportRes, grid = n === RES;
     const meta = {
         version: SAVE_VERSION,
         mapSize: MAP,
-        resolution: RES,
+        resolution: n,
+        cellSize: MAP / (grid ? n : n - 1), // m zwischen zwei Samples
         maxH: params.maxH,
         waterLevel: params.waterLevel,
-        height: 'height_m = value / 65535 * maxH (16-bit PNG; .r16 = raw uint16 little endian, no header); value / 255 * maxH (8-bit)',
-        pixels: 'pixel (i, j) = map ((i + 0.5) / resolution * mapSize, (j + 0.5) / resolution * mapSize); row j = map y (three.js +z)',
+        height: `height_m = value / 65535 * maxH (16-bit PNG; .r16 = raw uint16 little endian, no header); value / 255 * maxH (8-bit preview, always ${RES})`,
+        pixels: (grid
+            ? 'pixel (i, j) = map ((i + 0.5) / resolution * mapSize, (j + 0.5) / resolution * mapSize) (cell centres)'
+            : 'pixel (i, j) = map (i / (resolution - 1) * mapSize, j / (resolution - 1) * mapSize) (vertices, first/last on the map edges)')
+            + '; row j = map y (three.js +z)',
         settings: pickParams(params),
     };
-    download(new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }), `heightmap-${params.seed}-meta.json`);
+    download(new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }), `heightmap-${params.seed}-${exportRes}-meta.json`);
 }
 
 if (!applyHash()) runGenerate();

@@ -70,7 +70,7 @@ R18 README (ganz am Ende)
 - [x] R4 Undo/Redo (headless: Seed + Slider + Preset, 3× Undo = Start, Redo, neuer Zweig kappt Redo) — geprüft am 2026-09-12
 - [x] R5 Share-Link (URL-Hash = aktueller Stand, Button „Link“; headless: neuer Tab pixelgleich, hashchange, Version-1-Warnung) — geprüft am 2026-09-12
 - [x] R6 RAW-Export (`src/export.js`, Test `raw.test.mjs`; headless: .r16 = 1024²·2 Byte, wertgleich zu PNG16) — geprüft am 2026-09-12
-- [ ] R7 Export-Auflösung — geprüft am
+- [x] R7 Export-Auflösung (1024 = Original, 513/1025/2049 = Vertex-Gitter auf den Map-Ecken; headless: Größen, Ecken, Splat Σ255, PNG = RAW) — geprüft am 2026-09-12
 - [ ] R8 Masken-Export (Slope/Normal/Krümmung) — geprüft am
 - [ ] R9 Splatmap im 3D — geprüft am
 - [ ] R10 glTF-Export — geprüft am

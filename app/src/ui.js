@@ -83,7 +83,8 @@ function menu(id, placeholder, items, pick) {
     return s;
 }
 
-// cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), exports: {Label: fn}, regenerate()
+// cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), exports: {Label: fn},
+//     exportSizes: [px], exportSize(px), regenerate()
 // → { guis: {Tab: GUI}, refresh(), status(text), busy(on) }
 export function buildPanel(params, cb) {
     const seed = el('input', { id: 'seed', type: 'number', min: 1, max: 99999, step: 1, value: params.seed, title: 'Seed (seed)' });
@@ -113,12 +114,16 @@ export function buildPanel(params, cb) {
         }
         setTimeout(() => { link.textContent = 'Link'; }, 1200);
     });
-    const status = el('div', { id: 'status', className: 'row', title: 'Last generation: GPU passes incl. readback, road network, total' });
+    // Export-Größe: Einstellung, kein Menü → Auswahl bleibt stehen
+    const size = el('select', { id: 'exportRes', title: 'Export size in pixels (heightmap, RAW, splatmap, metadata)' },
+        ...cb.exportSizes.map(n => el('option', { value: n, textContent: `${n} px` })));
+    size.addEventListener('change', () => cb.exportSize(+size.value));
+    const status = el('div',{ id: 'status', className: 'row', title: 'Last generation: GPU passes incl. readback, road network, total' });
     const toolbar = el('div', { className: 'toolbar' },
         el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice, regen),
         el('div', { className: 'row' }, menu('preset', 'Preset…', cb.presets, cb.preset),
-            button('Save', 'Save all settings as JSON', cb.save), button('Load', 'Load settings from JSON', cb.load), link,
-            menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]())),
+            button('Save', 'Save all settings as JSON', cb.save), button('Load', 'Load settings from JSON', cb.load), link),
+        el('div', { className: 'row' }, menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]()), size),
         status);
 
     const tabBar = el('div', { className: 'tabs' });
