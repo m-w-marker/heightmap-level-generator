@@ -40,8 +40,8 @@ const SETS = {
         ground: { src: 'ambientcg', id: 'Snow006' }, // snow_02: dunkle Zweige wiederholen sich
         rock: { src: 'polyhaven', id: 'rock_face_03' },
         scree: { src: 'polyhaven', id: 'rocks_ground_05' },
-        shore: { src: 'ambientcg', id: 'Ice002' },
-        top: { src: 'ambientcg', id: 'Ice003' },
+        shore: { src: 'ambientcg', id: 'Ice003' }, // auch die Eisfläche; Ice002 glitzert wie Scherben
+        top: { src: 'ambientcg', id: 'Ice004' },
         road: { src: 'polyhaven', id: 'asphalt_snow' },
     },
 };

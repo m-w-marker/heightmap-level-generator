@@ -393,6 +393,7 @@ function applyMaterial() {
     sun.color.set(bio.sun[0]);
     sun.intensity = bio.sun[1];
     waterMat.color.set(bio.water.mesh);
+    setMaterials(); // Wasser ↔ Eis
     if (p.biome !== texBiome) loadTextures();
     ROCK_SLOPE[0] = Math.tan(p.rockSlope * Math.PI / 180);
     ROCK_SLOPE[1] = Math.tan(Math.min(p.rockSlope + p.rockBlend, 89) * Math.PI / 180);
@@ -525,12 +526,19 @@ function updateMaskTex() {
 const view = { textures: true, texSize: 2048 };
 const autoMat = createTerrainMaterial(terrainTex, maskTex, renderer.getMaxAnisotropy());
 const terrainMaterial = () => view.textures && autoMat.ready ? autoMat.mat : terrainMat;
+// Eis ohne Texturen: Farbkarte über die uv des Wasser-Meshes (= Terrain-Gitter), Alpha der Ecken wie beim Wasser
+const iceMat = new THREE.MeshStandardMaterial({ map: terrainTex, roughness: autoMat.ice.roughness, metalness: 0, transparent: true, vertexColors: true });
+const waterMaterial = () => !bio.ice ? waterMat : view.textures && autoMat.ready ? autoMat.ice : iceMat;
+function setMaterials() {
+    if (terrain) terrain.material = terrainMaterial();
+    if (waterMesh) waterMesh.material = waterMaterial();
+}
 let texBiome = null; // Biom des zuletzt angeforderten Textur-Satzes (applyMaterial lädt bei Wechsel)
 async function loadTextures() {
     texBiome = params.biome;
     try {
         await autoMat.load(view.texSize, texBiome);
-        if (terrain) terrain.material = terrainMaterial();
+        setMaterials();
     } catch (e) {
         console.error('Textures:', e.message);
     }
@@ -544,8 +552,8 @@ function resizeView(g) {
     pimg = pctx.createImageData(RES, RES);
     terrainTex.dispose();
     terrainTex = makeTerrainTex();
-    terrainMat.map = terrainTex;
-    terrainMat.needsUpdate = true;
+    terrainMat.map = iceMat.map = terrainTex;
+    terrainMat.needsUpdate = iceMat.needsUpdate = true;
     autoMat.setColorTex(terrainTex);
 }
 
@@ -623,8 +631,9 @@ function buildWaterMesh() {
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    geo.setAttribute('uv', new THREE.BufferAttribute(terrain.geometry.attributes.uv.array, 2)); // Eis: Farbkarte; eigenes Attribut, Array geteilt
     geo.setIndex(new THREE.BufferAttribute(idx.slice(0, ni), 1));
-    return new THREE.Mesh(geo, waterMat);
+    return new THREE.Mesh(geo, waterMaterial());
 }
 
 // Höhe des angezeigten Meshes (Dreiecke wie oben) in m; der RES²-Readback weicht an Böschungen ±12 cm davon ab
@@ -698,7 +707,7 @@ PRESETS['Desert highway'] = { ...biome('desert'), baseLevel: 36, hillAmp: 2.5, h
     exitCount: 2, extraLinks: 0, reuse: 0.3 };
 PRESETS['Snow world'] = { ...biome('snow'), baseLevel: 20, hillAmp: 8, hillWave: 110, hillRoughness: 0.45, mountainAmp: 45,
     mountainCoverage: 25, cliffDrop: 8, cliffCoverage: 10, rimAmp: 60, erosionStrength: 30, screeAngle: 70,
-    riverCatchment: 2, riverWidth: 6, rockSlope: 40, townCount: 4, slopePenalty: 6 };
+    riverCatchment: 2, riverWidth: 6, rockSlope: 40, sandHeight: 0.3, townCount: 4, slopePenalty: 6 }; // schmales Eis-Ufer
 function applyPreset(overrides) {
     Object.assign(params, DEFAULTS, overrides);
     setRoadColor();
@@ -871,7 +880,7 @@ const panel = buildPanel(params, {
 panel.guis.World.add(params, 'maxH').name('Max height (auto, m)').decimals(1).disable().listen();
 {
     const f = panel.guis.Material.addFolder('View');
-    const c = f.add(view, 'textures').name('Textures').onChange(() => { if (terrain) terrain.material = terrainMaterial(); });
+    const c = f.add(view, 'textures').name('Textures').onChange(setMaterials);
     c.domElement.title = 'Real ground textures up close (grass, rock, gravel, sand, snow, road); off = the flat color map, lighter on weak GPUs. Not saved.';
     c.domElement.dataset.key = 'textures';
     const s = f.add(view, 'texSize', { '2K': 2048, '1K': 1024 }).name('Texture size').onChange(loadTextures);

@@ -6,7 +6,8 @@ export const ROLES = ['ground', 'rock', 'scree', 'shore', 'top', 'road'];
 
 // ramp: sRGB 0–255 in der Reihenfolge der STOPS (Ufer, Boden, Boden dunkel, Fels-Zone, Schutt, oben); rock: steile Hänge;
 // water: Farbkarte tief/flach + Wasser-Mesh; road: Straßenfarbe, die ein Biom-Wechsel setzt; sky: Hintergrund + Nebel;
-// hemi: [Himmel, Boden, Stärke], sun: [Farbe, Stärke]
+// hemi: [Himmel, Boden, Stärke], sun: [Farbe, Stärke]; ice: Seen/Flüsse gefroren → water = Eis-Farben, Wasser-Mesh mit
+// Eis-Material (Ufer-Textur) statt water.mesh
 export const BIOMES = {
     temperate: {
         label: 'Temperate',
@@ -42,7 +43,8 @@ export const BIOMES = {
         label: 'Snow world',
         ramp: [[196, 216, 228], [232, 237, 243], [218, 225, 234], [122, 120, 124], [176, 179, 186], [168, 198, 218]],
         rock: [96, 96, 102],
-        water: { deep: [36, 64, 104], shallow: [70, 100, 130], mesh: 0x46708f },
+        water: { deep: [120, 164, 190], shallow: [184, 212, 228], mesh: 0x46708f },
+        ice: true,
         road: '#6c6e72',
         sky: 0x10141a,
         hemi: [0xd4e6ff, 0x8090a0, 0.7],

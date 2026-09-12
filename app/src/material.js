@@ -1,7 +1,7 @@
 // Auto-Material des 3D-Terrains (→ Plan/Texturierung.md): three NodeMaterial (TSL), weil es unter WebGPU kein
 // onBeforeCompile gibt. Terrain-Mesh ohne Transformation → lokal = Welt
 import { MeshStandardNodeMaterial, DataArrayTexture, Vector3, RepeatWrapping, LinearFilter, LinearMipmapLinearFilter, SRGBColorSpace, NoColorSpace } from 'three/webgpu';
-import { texture, uv, uniform, positionWorld, cameraPosition, normalLocal, transformNormalToView, mx_noise_float, float, vec2, vec3, clamp, max, pow, tan, smoothstep, mix, luminance, select } from 'three/tsl';
+import { texture, uv, uniform, positionWorld, cameraPosition, normalLocal, transformNormalToView, mx_noise_float, float, vec2, vec3, clamp, max, pow, tan, smoothstep, mix, luminance, select, vertexColor } from 'three/tsl';
 import { SHORE_RANGE } from './masks.js';
 import { ROLES } from './biomes.js';
 
@@ -10,6 +10,7 @@ import { ROLES } from './biomes.js';
 const L = Object.fromEntries(ROLES.map((l, i) => [l, i]));
 const SHORE_WET = 0.3; // m über dem Ufer-Spiegel: Übergang Sandfarbe (unter Wasser) → Farbkarte
 const BLEND_LUMA = 0.3, BLEND_SHARP = 4;
+const ICE_ROUGH = 0.35; // glatter → die Risse der Detail-Normalen glitzern im Sonnenlicht
 const TRI_SHARP = 4; // Triplanar: Achsen-Gewicht |N|^4 → schmale Übergangszone zwischen den Projektionen
 const AT_SCALE = 0.29, AT_WAVE = 0.04; // Anti-Tiling: zweites Sample 3,4× größer; Mischmuster ~25 m
 const AT_COS = Math.cos(0.61), AT_SIN = Math.sin(0.61); // gedreht, damit die Kachelkanten nicht parallel liegen // Höhen-Blend: helle Texel (Steine) setzen sich im Übergang durch statt weich zu mischen
@@ -60,8 +61,11 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
     const color = texture(colorTex, uv()), mask = texture(maskTex, uv());
     const mat = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
     mat.colorNode = color;
+    // Eis statt Wasser (Biome mit ice): Wasser-Mesh mit uv wie das Terrain, Alpha der Ecken = Tiefe → Ufer läuft aus wie beim
+    // Wasser (opak gäbe im Flachwasser Zickzack zweier fast paralleler Flächen)
+    const ice = new MeshStandardNodeMaterial({ roughness: ICE_ROUGH, metalness: 0, transparent: true });
     let albedo = null, normals = null;
-    const self = { mat, ready: false, size: 0 };
+    const self = { mat, ice, ready: false, size: 0 };
 
     function build() {
         const ramp = (h, a, b) => clamp(h.sub(a).div(max(b.sub(a), 0.01)), 0, 1); // linear wie die Farbrampe
@@ -115,6 +119,11 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
         const detail = b.reduce((a, v, i) => a.add(nrm[i].mul(v)), vec3(0)).normalize();
         mat.normalNode = transformNormalToView(mix(detail, N, fade).normalize()); // Mesh ohne Transformation: lokal = Welt
         mat.needsUpdate = true;
+        // Eis: Ufer-Textur planar, getönt auf die Farbkarte (zeigt unter Wasser die Eis-Farben des Bioms), fern die Farbkarte
+        ice.colorNode = mix(tex[L.shore].rgb.mul(mix(vec3(1), color.rgb.div(mean[L.shore].max(1e-3)), u.texTint)), color.rgb, fade);
+        ice.normalNode = transformNormalToView(mix(nrm[L.shore], N, fade).normalize());
+        ice.opacityNode = vertexColor().a;
+        ice.needsUpdate = true;
     }
 
     // size = Kantenlänge der Schicht-Texturen (1024 / 2048), biome = Ordner; lädt neu, erster Aufruf baut den Shader.
