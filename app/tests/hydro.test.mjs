@@ -1,13 +1,15 @@
 // Hydrologie (→ Plan/Fluesse.md F1): Fluss im Tal bis zum Abfluss, Spiegel nie steigend; Grube → See auf Überlauf-Höhe;
 // Meer als Abfluss; aus = nichts; deterministisch; Laufzeit auf 128²
 import { hydrology, MAX_RIVERS, RIVER_POINTS } from '../src/hydro.js';
+import { grids } from '../src/uniforms.js';
 
 let fail = 0;
 function check(cond, msg) {
     if (!cond) { console.error('FAIL:', msg); fail++; }
 }
-// Map-Größe als Argument (→ Plan/MapGroesse.md): Positionen und Grundhöhe skalieren mit s, Gefälle/Formen in Metern
-const M = +(process.argv[2] ?? 400), s = M / 400, N = 128 * s, cs = M / N; // Raster wächst mit wie grids().pre
+// Map-Größe als Argument (→ Plan/MapGroesse.md): Positionen und Grundhöhe skalieren mit s (Szenen für 400 m gebaut),
+// Gefälle/Formen in Metern; Raster wie in der App
+const M = +(process.argv[2] ?? 512), s = M / 400, N = grids(M).pre, cs = M / N;
 const OPTS = { waterLevel: 0, rimZone: 40, riverCatchment: 1, riverWidth: 6, lakeArea: 50 };
 // f(x, y) in m über Zellzentren; Rauschen: deterministisches LCG
 function field(f, noise = 0) {

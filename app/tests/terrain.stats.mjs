@@ -53,7 +53,7 @@ function maxHeight(p) {
     return mx;
 }
 const base = {
-    mapSize: 400, baseLevel: 30, hillAmp: 8, hillWave: 120, hillRoughness: 0.5, mountainAmp: 60, mountainWave: 180, clusterWave: 220,
+    mapSize: 512, baseLevel: 30, hillAmp: 8, hillWave: 120, hillRoughness: 0.5, mountainAmp: 60, mountainWave: 180, clusterWave: 220,
     mountainCoverage: 30, cliffDrop: 20, cliffWave: 90, cliffWidth: 15, cliffAreaWave: 160, cliffCoverage: 30,
     rimAmp: 40, rimZone: 45, rimWave: 90,
 };

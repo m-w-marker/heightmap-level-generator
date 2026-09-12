@@ -54,16 +54,17 @@ for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS
 check(/lakeN = u32\(u\.params\.lakeRes\)/.test(wgsl) && /lakes\[u32\(c\.y\) \* lakeN/.test(wgsl) && /n = i32\(u\.params\.erosionRes\)/.test(wgsl)
     && /rL = mix\(a\.z, b\.z/.test(wgsl) && /rW = mix\(a\.w, b\.w/.test(wgsl), 'WGSL: See-Feld mit lakeRes, erosionDelta mit erosionRes, Fluss-Spiegel .z, halbe Breite .w');
 
-// Raster je Map-Größe (→ Plan/Aufloesung.md): 400 m = bisherige feste Werte; alle Raster glatt durch 16 (Dispatch 16×16)
+// Raster je Map-Größe (→ Plan/Aufloesung.md, Plan/Pixel05.md): 512 m = 1024²; jede Reglerstufe (64 m) glatt 0,5 m/px, Raster durch 16
 {
-    const g = grids(400);
-    check(g.res === 1024 && g.tn === 512 && g.ero === 512 && g.pre === 128, `grids(400) = 1024/512/512/128 (ist ${Object.values(g).join('/')})`);
-    for (let m = 200; m <= 1000; m += 50) {
+    const g = grids(512);
+    check(g.res === 1024 && g.tn === 512 && g.ero === 512 && g.pre === 128, `grids(512) = 1024/512/512/128 (ist ${Object.values(g).join('/')})`);
+    for (let m = 256; m <= 1280; m += 64) {
         const q = grids(m);
-        const ok = Object.values(q).every(v => v % 16 === 0) && Math.abs(m / q.res - 400 / 1024) < 1e-9;
+        const ok = Object.values(q).every(v => v % 16 === 0) && m / q.res === 0.5;
         check(ok, `grids(${m}): ${Object.values(q).join('/')} durch 16, ${(m / q.res).toFixed(4)} m/px`);
     }
-    check(grids(50).res === RES_MIN && grids(5000).res === RES_MAX, 'grids außerhalb 200–1000 m geklemmt');
+    check(grids(256).res === RES_MIN && grids(1280).res === RES_MAX, 'Regler-Enden 256 / 1280 m = RES_MIN / RES_MAX');
+    check(grids(50).res === RES_MIN && grids(5000).res === RES_MAX, 'grids außerhalb 256–1280 m geklemmt');
     const p = PARAM_FIELDS.erosionRes({ mapSize: 700 }), l = PARAM_FIELDS.lakeRes({ mapSize: 700 });
     check(p === grids(700).ero && l === grids(700).pre, 'Uniform erosionRes / lakeRes = grids');
 }

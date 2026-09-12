@@ -70,10 +70,10 @@ export const PARAM_FIELDS = {
     lakeRes: p => grids(p.mapSize).pre,    // Raster des See-Spiegelfelds = Prepass
 };
 
-// Raster je Map-Größe (→ Plan/Aufloesung.md): ein Pixel bleibt PX_M (400 m / 1024 px); Vielfache von 128 → alle Dispatches
-// glatt durch 16. Heightmap res, Mesh tn = res/2, Erosion ero = res/2 (→ Plan/Erosion.md), Prepass/Routing/Hydrologie pre = res/8.
-// Größen außerhalb RES_MIN…RES_MAX (geladene JSON) werden geklemmt → Pixel weicht dann ab
-export const PX_M = 400 / 1024;
+// Raster je Map-Größe (→ Plan/Aufloesung.md): ein Pixel bleibt PX_M (512 m / 1024 px, → Plan/Pixel05.md); Vielfache von 128
+// → alle Dispatches glatt durch 16. Heightmap res, Mesh tn = res/2, Erosion ero = res/2 (→ Plan/Erosion.md), Prepass/Routing/
+// Hydrologie pre = res/8. Größen außerhalb RES_MIN…RES_MAX oder nicht auf 64 m (geladene JSON) → Pixel weicht dann ab
+export const PX_M = 0.5;
 export const RES_MIN = 512, RES_MAX = 2560;
 export function grids(mapSize) {
     const res = Math.min(Math.max(Math.round(mapSize / PX_M / 128) * 128, RES_MIN), RES_MAX);

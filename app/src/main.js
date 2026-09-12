@@ -79,7 +79,7 @@ const GMAX = grids(Infinity);
 const params = {
     // Start = flaches Hügelland mit etwas Wasser (Seed 1337: ~5 %); Presets setzen ihre Terrain-Werte selbst
     seed: 1337,
-    mapSize: 400, // m Kantenlänge; Auflösungen bleiben fest → m/px wächst mit (→ Plan/MapGroesse.md)
+    mapSize: 512, // m Kantenlänge = 1024 px à 0,5 m; Raster wachsen mit (→ Plan/Pixel05.md)
     baseLevel: 17.5, // 2,5 m über waterLevel → Senken werden Seen
     hillAmp: 6,
     hillWave: 110,
@@ -418,7 +418,7 @@ function terrainColor(out, o, hm, m, s, rel, W) {
 // slope = Hangneigung |∇h| in m/m (zentrale Differenzen); relief = Höhe − Mittel im Abstand RELIEF_M in m
 // (> 0 Kuppe, < 0 Mulde) → Farbe heller/dunkler, macht flache Hügel lesbar
 // vereinfacht: eigene Neigung statt masks.js – Zusammenführen mit R11 (→ Plan/Roadmap.md)
-const RELIEF_M = 9.375; // m = 24 px bei 400 m / 1024 px; fest in m, sonst wüchse die Tönung mit der Map (→ Plan/MapGroesse.md)
+const RELIEF_M = 9.375; // m (= 24 px bei 0,39 m/px, jetzt 19 px); fest in m, sonst wüchse die Tönung mit der Map (→ Plan/MapGroesse.md)
 let slope = new Float32Array(RES * RES);
 let relief = new Float32Array(RES * RES);
 function slopeRelief(h, n, maxH, mapSize) {
@@ -515,7 +515,7 @@ const waterMat = new THREE.MeshStandardMaterial({ color: 0x3d78b0, roughness: 0.
 const WATER_SINK = 0.05; // m unter dem Gelände für trockene Randecken
 const WATER_FADE = 0.4;  // m Wassertiefe bis volle Deckkraft
 let waterMesh = null;
-// Bei 1000 m sind das 1,6 Mio. Ecken → direkt in die Puffer schreiben (keine Array-Literale je Ecke/Viereck), Normale
+// Bei 1280 m sind das 1,6 Mio. Ecken → direkt in die Puffer schreiben (keine Array-Literale je Ecke/Viereck), Normale
 // konstant nach oben statt computeVertexNormals (Wasser ist fast eben): 630 → ~100 ms (→ Plan/Aufloesung.md)
 function buildWaterMesh() {
     const ground = terrain.geometry.attributes.position.array, sea = params.waterLevel;
@@ -620,7 +620,8 @@ function applyPreset(overrides) {
 // Save/Load als JSON: alle params außer maxH (automatisch) (→ Plan/SaveLoad.md)
 const SAVE_KEYS = Object.keys(params).filter(k => k !== 'maxH');
 // 2: Integer-Noise-Hash → gleicher Seed ergibt ein anderes Terrain als in Version 1 (Dateien ohne Feld)
-const SAVE_VERSION = 2;
+// 3: 0,5 m/px statt 0,39 → Routing-Raster und Pixel anders, Straßen weichen ab (→ Plan/Pixel05.md)
+const SAVE_VERSION = 3;
 // Fremde JSON (von Hand / aus der GUI kopiert): Schlüssel ohne Groß-/Kleinschreibung ("Seed"), Zahlen oft als
 // String → Typ vom Default erzwingen, sonst "45" + 10 = "4510" im Routing; Farbe mit '#'
 function pickParams(obj) {

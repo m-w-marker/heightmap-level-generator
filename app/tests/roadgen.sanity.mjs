@@ -1,11 +1,12 @@
 // Node-Sanity für roadgen (→ Plan/TerrainStrassennetz.md N1/N2): Netz-Planung, Straßen Knoten→Knoten,
 // in Map-Grenzen, deterministisch, Hügel-Umgehung, kein Parallelband, Level = Feld an der Position, Laufzeit
 import { generateRoads, planNetwork, sampleTerrain, MAX_ROADS, ROAD_POINTS } from '../src/roadgen.js';
+import { grids } from '../src/uniforms.js';
 
-// Map-Größe als Argument (→ Plan/MapGroesse.md): Positionen skalieren mit s, Formgrößen bleiben in Metern
+// Map-Größe als Argument (→ Plan/MapGroesse.md): Positionen skalieren mit s (Szenen für 400 m gebaut), Formgrößen bleiben in Metern
 const seed = 1337;
-const mapSize = +(process.argv[2] ?? 400), s = mapSize / 400;
-const N = 128 * s; // Raster wächst mit wie grids().pre (→ Plan/Aufloesung.md)
+const mapSize = +(process.argv[2] ?? 512), s = mapSize / 400;
+const N = grids(mapSize).pre; // Routing-Raster wie in der App (→ Plan/Aufloesung.md)
 const opts = {
     waterLevel: 15, roadOffset: 2, roadTolerance: 0.7, levelSmoothing: 12, slopePenalty: 5, waterAvoid: 2, roadMaxGrade: 12,
     rimZone: 45, townCount: 6, townSpacing: 70, exitCount: 3, extraLinks: 2, reuse: 0.4,

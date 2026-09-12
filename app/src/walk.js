@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 export const EYE = 1.7; // m über Grund
-const SPEED = 5, RUN = 15; // m/s, Shift = rennen (400 m Map)
+const SPEED = 5, RUN = 15; // m/s, Shift = rennen
 const NEAR = 0.1; // Orbit-near 1 m schneidet in Augenhöhe den Boden am Hang ab
 const KEYS = { KeyW: [1, 0], ArrowUp: [1, 0], KeyS: [-1, 0], ArrowDown: [-1, 0], KeyD: [0, 1], ArrowRight: [0, 1], KeyA: [0, -1], ArrowLeft: [0, -1] };
 
