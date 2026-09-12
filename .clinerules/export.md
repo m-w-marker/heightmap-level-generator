@@ -3,6 +3,8 @@ paths:
   - "app/src/png.js"
   - "app/tests/png.test.mjs"
   - "app/src/main.js"
+  - "app/src/export.js"
+  - "app/tests/raw.test.mjs"
 ---
 # Thema: Export (PNG, Splatmap, Metadaten)
 

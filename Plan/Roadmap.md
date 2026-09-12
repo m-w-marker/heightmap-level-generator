@@ -69,7 +69,7 @@ R18 README (ganz am Ende)
 - [x] R3 Generierzeit (Statuszeile GPU/Roads/Total, ↻ gesperrt; headless: GPU 6–8 ms, Roads 9–21 ms, Total ~160 ms) — geprüft am 2026-09-12
 - [x] R4 Undo/Redo (headless: Seed + Slider + Preset, 3× Undo = Start, Redo, neuer Zweig kappt Redo) — geprüft am 2026-09-12
 - [x] R5 Share-Link (URL-Hash = aktueller Stand, Button „Link“; headless: neuer Tab pixelgleich, hashchange, Version-1-Warnung) — geprüft am 2026-09-12
-- [ ] R6 RAW-Export — geprüft am
+- [x] R6 RAW-Export (`src/export.js`, Test `raw.test.mjs`; headless: .r16 = 1024²·2 Byte, wertgleich zu PNG16) — geprüft am 2026-09-12
 - [ ] R7 Export-Auflösung — geprüft am
 - [ ] R8 Masken-Export (Slope/Normal/Krümmung) — geprüft am
 - [ ] R9 Splatmap im 3D — geprüft am

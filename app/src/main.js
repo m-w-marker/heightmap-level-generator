@@ -3,6 +3,7 @@ import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildPanel } from './ui.js';
 import { encodePng } from './png.js';
+import { quantize16, encodeR16 } from './export.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, ROADS_OFFSET, autoMaxH } from './uniforms.js';
@@ -514,6 +515,7 @@ const panel = buildPanel(params, {
     link: copyLink,
     exports: {
         'Heightmap PNG (16-bit)': exportPng16,
+        'Heightmap RAW (.r16)': exportR16,
         'Splatmap PNG (RGBA)': exportSplatmap,
         'Metadata JSON': exportMeta,
         'Heightmap PNG (8-bit preview)': exportPng,
@@ -584,11 +586,12 @@ function exportPng() {
     c.toBlob(blob => download(blob, `heightmap-${params.seed}-8bit.png`), 'image/png');
 }
 
-// 16 Bit: Stufe maxH / 65535 (≈ 2 mm) statt maxH / 255 (≈ 0,45 m bei 114 m) (→ Plan/Export.md)
 async function exportPng16() {
-    const px = new Uint16Array(RES * RES);
-    for (let i = 0; i < px.length; i++) px[i] = Math.round(heights[i] * 65535); // heights schon 0–1 geklemmt
-    download(await encodePng(RES, RES, px, 1, 16), `heightmap-${params.seed}-16bit.png`);
+    download(await encodePng(RES, RES, quantize16(heights), 1, 16), `heightmap-${params.seed}-16bit.png`);
+}
+
+function exportR16() {
+    download(new Blob([encodeR16(quantize16(heights))], { type: 'application/octet-stream' }), `heightmap-${params.seed}-${RES}.r16`);
 }
 
 // Splatmap RGBA: R Straße · G Fels · B Wasser + Ufer (bis zur Sand-Grenze der Farbrampe) · A Rest (Gras);
@@ -618,7 +621,7 @@ function exportMeta() {
         resolution: RES,
         maxH: params.maxH,
         waterLevel: params.waterLevel,
-        height: 'height_m = value / 65535 * maxH (16-bit PNG); value / 255 * maxH (8-bit)',
+        height: 'height_m = value / 65535 * maxH (16-bit PNG; .r16 = raw uint16 little endian, no header); value / 255 * maxH (8-bit)',
         pixels: 'pixel (i, j) = map ((i + 0.5) / resolution * mapSize, (j + 0.5) / resolution * mapSize); row j = map y (three.js +z)',
         settings: pickParams(params),
     };
