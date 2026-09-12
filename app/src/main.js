@@ -484,6 +484,8 @@ const PRESETS = {
     'Lakes': { baseLevel: 18.5, hillAmp: 6, hillWave: 110, hillRoughness: 0.35, mountainAmp: 15, mountainCoverage: 10,
         cliffDrop: 4, cliffCoverage: 5, waterLevel: 16, rimAmp: 30, townCount: 5, waterAvoid: 4 },
 };
+// Schuttwinkel 65°: kappt die 1-Zellen-Grate starker Erosion, Abrisskanten bleiben steil (→ Plan/Erosion.md)
+PRESETS['Eroded mountains'] = { ...PRESETS.Mountains, erosionStrength: 70, erosionIterations: 400, screeAngle: 65 };
 function applyPreset(overrides) {
     Object.assign(params, DEFAULTS, overrides);
     setRoadColor();

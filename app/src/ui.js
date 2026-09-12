@@ -20,8 +20,8 @@ export const TABS = {
         ],
         Erosion: [
             ['erosionStrength', 'Strength (%)', 0, 100, 1, 'Rain and scree wear the terrain: gullies, softer slopes, debris fans. 0 = off.'],
-            ['erosionIterations', 'Duration', 20, 1000, 10, 'Simulation steps: longer = deeper, longer channels, slower generation.'],
-            ['screeAngle', 'Scree angle (°)', 20, 90, 1, 'Steeper slopes shed material until they reach this angle; 90 = no scree.'],
+            ['erosionIterations', 'Duration', 20, 600, 10, 'Simulation steps: longer = deeper, longer channels, slower generation.'],
+            ['screeAngle', 'Scree angle (°)', 20, 90, 1, 'Steeper slopes shed material until they reach this angle; 90 = off. ~65 trims sharp ridges of strong erosion, lower turns cliffs into scree.'],
         ],
         Advanced: [
             ['hillRoughness', 'Hill roughness', 0.25, 0.65, 0.01, 'Detail per octave: 0.25 smooth rolling … 0.65 rugged.'],

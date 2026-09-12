@@ -54,7 +54,9 @@ als Export für Unreal und als Maske für R11/R16.
 - [x] E2 Erosion-Kernels + Regler (`erosion.wgsl` + `erosion.js`, 5 Kernel je Iteration + finish, 7 Storage-Puffer ≤ Limit 8;
   `computeMap` nacheinander statt überlappend; headless Mountains/Rolling hills/Defaults bei 50 %: 2 Läufe bitgleich, keine NaN,
   netto −0,1 % der Gesamtmasse (Abfluss über den Rand), +24 ms, Straßen-Level 0 Ausreißer; Erosion aus: 7 Presets bitgleich) — geprüft am 2026-09-12
-- [ ] E3 Tuning + Preset — geprüft am
+- [x] E3 Tuning + Preset „Eroded mountains“ (Mountains + 70 % / 400 / Schutt 65°; Stärke × Dauer wirkt als Produkt, 100 % × 1000
+  ergab 1-Zellen-Messergrate → Duration max. 600, 65° Schutt kappt die Grate; headless fern/mid/nah: Rinnen an den Flanken,
+  Ablagerung in Talböden, Canyon-Kanten bei 90° scharf, Straße dominant, Level GPU vs. CPU 0 Ausreißer) — geprüft am 2026-09-12
 - [ ] E4 Flow-Map-Export — geprüft am
 - [ ] E5 Seed-Vergleich — geprüft am
 - [ ] E6 Doku — geprüft am
