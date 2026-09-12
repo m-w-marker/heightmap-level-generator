@@ -68,6 +68,29 @@ export const PARAM_FIELDS = {
 // Festes Erosions-Gitter (→ Plan/Erosion.md): unabhängig von der Ausgabe-Auflösung = EROSION_RES in den WGSL-Modulen
 export const EROSION_RES = 512;
 
+// 1:1 zu struct E in erosion.wgsl; p = params + mapSize, erode = false → nur Wasser (Flow-Map), Terrain bleibt
+const EROSION_CAPACITY = 0.05; // Kc bei erosionStrength 100 %
+export const EROSION_FIELDS = {
+    cell: p => p.mapSize / EROSION_RES,
+    dt: () => 0.1,
+    rain: () => 0.0005,
+    pipe: p => 9.81 * p.mapSize / EROSION_RES, // A = l² → A·g/l = g·l
+    fluxKeep: () => 0.99,
+    capacity: (p, erode) => erode ? EROSION_CAPACITY * p.erosionStrength / 100 : 0,
+    dissolve: () => 0.3,
+    deposit: () => 0.02, // langsam → Sediment erreicht die Talböden; 0.3 füllte die Rinnen gleich wieder
+    evaporate: () => 0.05,
+    depthRef: () => 0.01,
+    depthMax: () => 0.3,
+    talus: p => Math.tan(Math.min(p.screeAngle, 89) * Math.PI / 180),
+    thermal: (p, erode) => erode ? 0.05 : 0,
+};
+export const EROSION_FLOATS = Math.ceil(Object.keys(EROSION_FIELDS).length / 4) * 4; // uniform-Struct auf 16 B aufgerundet
+export function encodeErosion(p, erode, out) {
+    let i = 0;
+    for (const f of Object.values(EROSION_FIELDS)) out[i++] = f(p, erode);
+}
+
 // Float-Index von roads: Params-Felder auf die 16-Byte-Align des vec4-Arrays aufgefüllt; towns direkt dahinter
 export const ROADS_OFFSET = Math.ceil(Object.keys(PARAM_FIELDS).length / 4) * 4;
 export const TOWNS_OFFSET = ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS;

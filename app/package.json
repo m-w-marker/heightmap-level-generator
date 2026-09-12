@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "naga": "C:\\naga-proj\\target\\debug\\naga-runner.exe src\\heightmap.wgsl",
+    "naga": "C:\\naga-proj\\target\\debug\\naga-runner.exe src\\heightmap.wgsl && C:\\naga-proj\\target\\debug\\naga-runner.exe src\\erosion.wgsl",
     "check": "npm run naga && npm run sanity && npm run build",
     "sanity": "node tests/roadgen.sanity.mjs && node tests/uniforms.layout.mjs && node tests/terrain.stats.mjs && node tests/png.test.mjs && node tests/export.test.mjs && node tests/masks.test.mjs",
     "preview": "vite preview"

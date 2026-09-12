@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, UNIFORM_FLOATS, EROSION_RES, encodeUniforms } from '../src/uniforms.js';
+import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, UNIFORM_FLOATS, EROSION_RES, EROSION_FIELDS, EROSION_FLOATS, encodeUniforms, encodeErosion } from '../src/uniforms.js';
 import { MAX_ROADS, ROAD_POINTS, MAX_TOWNS } from '../src/roadgen.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,6 +42,20 @@ check(UNIFORM_FLOATS === TOWNS_OFFSET + 4 * MAX_TOWNS, `UNIFORM_FLOATS ${UNIFORM
 for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS], ['MAX_TOWNS', MAX_TOWNS], ['EROSION_RES', EROSION_RES]]) {
     const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)u;`));
     check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
+}
+
+// Erosion: struct E ↔ EROSION_FIELDS, Gitter-Konstante, Uniform-Größe auf 16 B (→ Plan/Erosion.md)
+{
+    const ero = readFileSync(join(root, 'src', 'erosion.wgsl'), 'utf8');
+    const m = ero.match(/struct E \{([\s\S]*?)\}/);
+    const fields = m ? m[1].split('\n').map(l => l.replace(/\/\/.*/, '').trim().replace(/,+$/, '')).filter(Boolean).map(l => l.split(':')[0].trim()) : [];
+    check(JSON.stringify(fields) === JSON.stringify(Object.keys(EROSION_FIELDS)), `erosion.wgsl struct E == EROSION_FIELDS (${fields.length} vs ${Object.keys(EROSION_FIELDS).length})`);
+    check(EROSION_FLOATS * 4 === Math.ceil(fields.length * 4 / 16) * 16, `EROSION_FLOATS ${EROSION_FLOATS} = struct E auf 16 B`);
+    const n = ero.match(/const N\s*=\s*(\d+)u;/);
+    check(!!n && Number(n[1]) === EROSION_RES, `erosion.wgsl const N == EROSION_RES ${EROSION_RES}`);
+    const out = new Float32Array(EROSION_FLOATS);
+    encodeErosion({ mapSize: 400, erosionStrength: 50, erosionIterations: 10, screeAngle: 40 }, true, out);
+    check(out.every(Number.isFinite), 'encodeErosion: alle Felder endlich');
 }
 
 // Encode-Puffer in main.js = UNIFORM_FLOATS (sonst verwirft das TypedArray die Orte still)

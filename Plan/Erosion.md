@@ -23,8 +23,12 @@ als Export für Unreal und als Maske für R11/R16.
 - Rand des Erosions-Gitters offen (Wasser fließt ab) → kein Stau an der Map-Kante.
 - **Thermisch:** Material rutscht, wo die Neigung über dem Schuttwinkel liegt (gather, massenerhaltend: Fluss a→b wird in a
   und b aus denselben Werten gerechnet). Läuft in jeder Iteration nach dem Wasser-Schritt.
-- **Regler (Tab Terrain, Gruppe „Erosion“):** `erosionStrength` % (0 = aus, Default 0), `erosionIterations` (Dauer, Default 200),
-  `screeAngle` ° Schuttwinkel (Default 40). Übrige Konstanten (Regen, Verdunstung, Abtrag/Ablage) im Shader, nach Screenshots gestimmt.
+- **Regler (Tab Terrain, Gruppe „Erosion“):** `erosionStrength` % (0 = aus, Default 0), `erosionIterations` (Dauer, Default 300),
+  `screeAngle` ° Schuttwinkel (Default 90 = aus: bei 40–60° werden Abrisskanten zu stumpfen Schutthängen, Canyon-Screenshots).
+  Übrige Konstanten in `EROSION_FIELDS`, nach Screenshots gestimmt.
+- **Sediment wandert mit dem Wasser über dieselben Rohre** (Anteil = abfließendes Wasser / Zellwasser) statt semi-Lagrange →
+  massenerhaltend; semi-Lagrange verlor ~40 % der bewegten Masse. Ablage langsam (0,02/Schritt), sonst füllt das Sediment
+  die Rinnen sofort wieder. Tiefes Wasser (> 0,3 m) trägt nicht ab → Rinnen an den Flanken statt Gräben in den Tälern.
 - Eigenes Shader-Modul `erosion.wgsl` mit eigenem kleinem Uniform (`EROSION_FIELDS` in `uniforms.js`, Layout-Test wie Params).
 - **Flow-Map:** Summe über die Iterationen von Wassertiefe × |v| je Zelle (512²), Export 8 Bit log-skaliert (p99 = 255),
   auf Export-Größe resampelt. Erosion aus → Export lässt die Wasser-Simulation einmal ohne Abtrag laufen (Terrain unberührt).
@@ -47,7 +51,9 @@ als Export für Unreal und als Maske für R11/R16.
 
 ## Abgeschlossen
 - [x] E1 Shader-Umbau ohne Wirkung (`rawTerrain`, Entry `raw`, `erosionOn`, Binding 3; 7 Presets heights + roadMask bitgleich) — geprüft am 2026-09-12
-- [ ] E2 Erosion-Kernels + Regler — geprüft am
+- [x] E2 Erosion-Kernels + Regler (`erosion.wgsl` + `erosion.js`, 5 Kernel je Iteration + finish, 7 Storage-Puffer ≤ Limit 8;
+  `computeMap` nacheinander statt überlappend; headless Mountains/Rolling hills/Defaults bei 50 %: 2 Läufe bitgleich, keine NaN,
+  netto −0,1 % der Gesamtmasse (Abfluss über den Rand), +24 ms, Straßen-Level 0 Ausreißer; Erosion aus: 7 Presets bitgleich) — geprüft am 2026-09-12
 - [ ] E3 Tuning + Preset — geprüft am
 - [ ] E4 Flow-Map-Export — geprüft am
 - [ ] E5 Seed-Vergleich — geprüft am

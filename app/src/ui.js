@@ -18,6 +18,11 @@ export const TABS = {
             ['cliffDrop', 'Drop (m)', 0, 60, 0.5, 'Height step between plateaus.'],
             ['cliffCoverage', 'Coverage (%)', 0, 100, 1, 'Share of the map that has cliffs.'],
         ],
+        Erosion: [
+            ['erosionStrength', 'Strength (%)', 0, 100, 1, 'Rain and scree wear the terrain: gullies, softer slopes, debris fans. 0 = off.'],
+            ['erosionIterations', 'Duration', 20, 1000, 10, 'Simulation steps: longer = deeper, longer channels, slower generation.'],
+            ['screeAngle', 'Scree angle (°)', 20, 90, 1, 'Steeper slopes shed material until they reach this angle; 90 = no scree.'],
+        ],
         Advanced: [
             ['hillRoughness', 'Hill roughness', 0.25, 0.65, 0.01, 'Detail per octave: 0.25 smooth rolling … 0.65 rugged.'],
             ['mountainWave', 'Ridge size (m)', 60, 500, 5, 'Wavelength of the mountain ridges.'],

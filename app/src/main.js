@@ -9,6 +9,7 @@ import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvat
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, UNIFORM_FLOATS, EROSION_RES, autoMaxH } from './uniforms.js';
+import { createErosion } from './erosion.js';
 import { createWalk } from './walk.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
@@ -87,6 +88,9 @@ const params = {
     exitCount: 3,
     extraLinks: 2,
     reuse: 0.4,
+    erosionStrength: 0, // % (0 = aus → Maps wie vor der Erosion, → Plan/Erosion.md)
+    erosionIterations: 300,
+    screeAngle: 90, // ° Schuttwinkel der thermischen Erosion; 90 = aus, darunter werden Abrisskanten zu Schutthängen
 };
 const DEFAULTS = { ...params }; // Basis jedes Presets
 
@@ -103,7 +107,7 @@ const heightBuf = device.createBuffer({
 });
 const uniformsBuf = device.createBuffer({ size: uniformsData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 const roadMaskBuf = device.createBuffer({ size: RES * RES * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
-const erosionDeltaBuf = device.createBuffer({ size: EROSION_RES * EROSION_RES * 4, usage: GPUBufferUsage.STORAGE });
+const erosion = createErosion(device);
 
 const shaderModule = device.createShaderModule({ code: WGSL });
 const info = await shaderModule.getCompilationInfo();
@@ -119,7 +123,16 @@ const bind = device.createBindGroup({
         { binding: 0, resource: { buffer: uniformsBuf } },
         { binding: 1, resource: { buffer: heightBuf } },
         { binding: 2, resource: { buffer: roadMaskBuf } },
-        { binding: 3, resource: { buffer: erosionDeltaBuf } },
+        { binding: 3, resource: { buffer: erosion.delta } },
+    ],
+});
+// Roh-Terrain für die Erosion (Entry raw, eigenes auto-Layout: nur Uniform + heights)
+const rawPipeline = device.createComputePipeline({ layout: 'auto', compute: { module: shaderModule, entryPoint: 'raw' } });
+const rawBind = device.createBindGroup({
+    layout: rawPipeline.getBindGroupLayout(0),
+    entries: [
+        { binding: 0, resource: { buffer: uniformsBuf } },
+        { binding: 1, resource: { buffer: heightBuf } },
     ],
 });
 
@@ -143,14 +156,34 @@ async function readBuffer(buf, bytes) {
 
 let terrain128 = new Float32Array(PRE * PRE); // in Metern (→ Plan/Roads.md)
 
-// Prepass → Straßennetz → Final-Pass in res² für p (maxH gesetzt); auch für die Seed-Vorschau (→ Plan/Roadmap.md R13).
-// Je Pass laufen writeBuffer, Dispatch und Kopie ohne await dazwischen → zwei Aufrufe dürfen sich überlappen
-async function computeMap(p, res) {
+// Nacheinander statt überlappend: erosion.delta muss über das await des Prepass bis zum Final-Pass stehen bleiben,
+// eine parallele Seed-Vorschau würde es überschreiben
+let gpuChain = Promise.resolve();
+function computeMap(p, res) {
+    const run = gpuChain.then(() => computeMapNow(p, res));
+    gpuChain = run.catch(() => {});
+    return run;
+}
+
+const NO_ROADS = new Float32Array(MAX_ROADS * ROAD_POINTS * 2), NO_LEVELS = new Float32Array(MAX_ROADS * ROAD_POINTS);
+
+// Roh-Terrain EROSION_RES² nach heightBuf → Erosion → erosion.delta / erosion.flow (→ Plan/Erosion.md)
+function runErosion(p, erode) {
+    encodeUniforms({ ...p, mapSize: MAP, res: EROSION_RES, roadCount: 0, clearingCount: 0 }, NO_ROADS, NO_LEVELS, [], uniformsData);
+    queue.writeBuffer(uniformsBuf, 0, uniformsData);
+    dispatch(EROSION_RES, rawPipeline, rawBind);
+    erosion.run(heightBuf, { ...p, mapSize: MAP }, erode);
+}
+
+// (Erosion →) Prepass → Straßennetz → Final-Pass in res² für p (maxH gesetzt); auch für die Seed-Vorschau (→ Plan/Roadmap.md R13).
+// Je Pass laufen writeBuffer, Dispatch und Kopie ohne await dazwischen (→ .clinerules/wgsl.md)
+async function computeMapNow(p, res) {
     const t0 = performance.now();
-    // Prepass: 128² Roh-Terrain (ohne Straßen, mit Rand-Ring; die Randzone sperrt das Routing selbst)
+    const erosionOn = p.erosionStrength > 0; // aus → heutiger Pfad bitgleich
+    if (erosionOn) runErosion(p, true);
+    // Prepass: 128² Roh-Terrain (+ Erosion, ohne Straßen, mit Rand-Ring; die Randzone sperrt das Routing selbst)
     // → Routing-Daten für roadgen (→ Plan/PresetsAusfahrten.md)
-    encodeUniforms({ ...p, mapSize: MAP, res: PRE, roadCount: 0, clearingCount: 0 },
-        new Float32Array(MAX_ROADS * ROAD_POINTS * 2), new Float32Array(MAX_ROADS * ROAD_POINTS), [], uniformsData);
+    encodeUniforms({ ...p, mapSize: MAP, res: PRE, roadCount: 0, clearingCount: 0, erosionOn }, NO_ROADS, NO_LEVELS, [], uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(PRE);
     const terrain = (await readBuffer(heightBuf, PRE * PRE * 4)).map(h => h * p.maxH);
@@ -158,7 +191,7 @@ async function computeMap(p, res) {
 
     const net = generateRoads(p.seed, MAP, { size: PRE, data: terrain }, p);
     const tg = performance.now();
-    encodeUniforms({ ...p, mapSize: MAP, res, roadCount: net.count, clearingCount: net.towns.length }, net.points, net.levels, net.towns, uniformsData);
+    encodeUniforms({ ...p, mapSize: MAP, res, roadCount: net.count, clearingCount: net.towns.length, erosionOn }, net.points, net.levels, net.towns, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(res);
     // Kopien laufen in Submit-Reihenfolge nach dem Dispatch
@@ -196,11 +229,11 @@ async function generate() {
     panel.status(`GPU ${map.gpuMs.toFixed(0)} ms · Roads ${map.roadMs.toFixed(0)} ms · Total ${totalMs.toFixed(0)} ms`);
 }
 
-function dispatch(res) {
+function dispatch(res, pl = pipeline, bg = bind) {
     const encoder = device.createCommandEncoder();
     const pass = encoder.beginComputePass();
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, bind);
+    pass.setPipeline(pl);
+    pass.setBindGroup(0, bg);
     pass.dispatchWorkgroups(res / 16, res / 16); // Workgroup 16×16 (→ .clinerules/projekt.md)
     pass.end();
     queue.submit([encoder.finish()]);
@@ -723,7 +756,7 @@ function exportMeta() {
 if (!applyHash()) runGenerate();
 
 const walk = createWalk(camera, renderer.domElement, controls, meshHeight, MAP / 2);
-if (import.meta.env.DEV) window.dbg.walk = walk;
+if (import.meta.env.DEV) Object.assign(window.dbg, { walk, erosion, readBuffer });
 
 let lastT = 0;
 renderer.setAnimationLoop(t => {
