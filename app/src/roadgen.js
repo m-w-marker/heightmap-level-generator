@@ -6,6 +6,7 @@
 
 export const MAX_ROADS = 16;
 export const ROAD_POINTS = 32;
+export const MAX_TOWNS = 8; // = MAX_TOWNS in heightmap.wgsl (Lichtungen), Regler-Maximum townCount
 const BAND_WIDTH = 12; // m neben einer Straße: teuer → spätere Straßen münden ein statt parallel zu laufen
 const BAND_AVOID = 3;  // Zusatzkosten pro m im Band
 const PATH_SMOOTH = 3; // Zellen Halbfenster gleitender Mittelwert (16-Nachbar-Pfad → Kurven statt Knicke)
@@ -140,7 +141,7 @@ function limitGrade(points, levels, n, g) {
     levels.set(lvl);
 }
 
-// → { points (MAX_ROADS×ROAD_POINTS×2), levels (MAX_ROADS×ROAD_POINTS), count, nodes, edges, mst, extra }
+// → { points (MAX_ROADS×ROAD_POINTS×2), levels (MAX_ROADS×ROAD_POINTS), count, nodes, edges, mst, extra, towns }
 export function generateRoads(seed, mapSize, terrain, opts) {
     const net = planNetwork(seed, mapSize, terrain, opts);
     const edges = net.edges.slice(0, MAX_ROADS);
@@ -186,7 +187,25 @@ export function generateRoads(seed, mapSize, terrain, opts) {
         }
     });
     limitGrade(points, levels, edges.length * ROAD_POINTS, opts.roadMaxGrade / 100);
-    return { points, levels, count: edges.length, nodes: net.nodes, edges, mst: net.mst, extra: net.extra };
+    const towns = townLevels(net.nodes, edges, levels, levelField, mapSize, opts);
+    return { points, levels, count: edges.length, nodes: net.nodes, edges, mst: net.mst, extra: net.extra, towns };
+}
+
+// Lichtung je Ort auf dem Level der Straßen-Enden dort (nach limitGrade) → Fahrbahn läuft ohne Stufe hinein;
+// Ort ohne Straße: Level-Feld wie eine Straße → [{x, y, level}] (→ Plan/Roadmap.md R12)
+function townLevels(nodes, edges, levels, levelField, mapSize, opts) {
+    const towns = [];
+    nodes.forEach((n, t) => {
+        if (n.exit) return;
+        let sum = 0, k = 0;
+        edges.forEach(([ia, ib], r) => {
+            if (ia === t) { sum += levels[r * ROAD_POINTS]; k++; }
+            if (ib === t) { sum += levels[r * ROAD_POINTS + ROAD_POINTS - 1]; k++; }
+        });
+        const own = Math.max(sampleTerrain(levelField, mapSize, n.x, n.y) + opts.roadOffset, opts.waterLevel + opts.roadTolerance + 0.3);
+        towns.push({ x: n.x, y: n.y, level: k ? sum / k : own });
+    });
+    return towns;
 }
 
 // Netz-Knoten + Kanten (→ Plan/TerrainStrassennetz.md N1)
@@ -232,7 +251,7 @@ function placeTowns(rand, mapSize, terrain, opts) {
     cands.sort((a, b) => a.score - b.score || a.k - b.k);
     const nodes = [];
     for (const c of cands) {
-        if (nodes.length >= opts.townCount) break;
+        if (nodes.length >= Math.min(opts.townCount, MAX_TOWNS)) break; // geladene JSON kann mehr verlangen
         if (nodes.every(n => Math.hypot(n.x - c.x, n.y - c.y) >= opts.townSpacing)) nodes.push({ x: c.x, y: c.y, exit: false });
     }
     return nodes;

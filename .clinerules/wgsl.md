@@ -12,7 +12,7 @@ paths:
 - NICHT Puffer- oder Array-Längen als Zahl hinschreiben, sondern aus `MAX_ROADS`/`ROAD_POINTS` berechnen. TypedArrays verwerfen Schreibzugriffe hinter dem Ende still.
 - NICHT WGSL im Browser testen ohne naga-Lauf vorher.
 - NICHT das Straßen-Level vom Segment mit dem größten Gewicht nehmen, sondern vom nächstgelegenen. Innerhalb der Fahrbahn ist das Gewicht für alle nahen Segmente 1 → das erste gewinnt → Level-Treppen.
-- NICHT Straßen-Böschung als feste Breite (`mix` über `smoothstep`), sondern als Neigung (Gelände in Kegel um das Level klemmen). Feste Breite → senkrechte Wände bei tiefen Einschnitten.
+- NICHT Straßen-Böschung oder Lichtungs-Rand als feste Breite (`mix` über `smoothstep`), sondern als Neigung (Gelände per `bank()` in Kegel um das Level klemmen). Feste Breite → senkrechte Wände bei tiefen Einschnitten, Lichtungen am Hang werden Tafelberge.
 - NICHT den Böschungskegel mit konstanter Neigung ins Unendliche laufen lassen, sondern die Neigung mit dem Abstand bis `SLOPE_MAX` steigern (`BANK_CURVE`). Sonst kappt er Gipfel und Seen 100 m neben der Straße, bei flachem `roadSlope` die halbe Karte.
 - NICHT Noise mit `fract(sin(großes Argument))` oder mit Float-Seed-Offsets (`seed + 101.3`) hashen, sondern ganzzahlig (`mix32`, `layerKey`). `sin` ist bei großen Argumenten je GPU verschieden genau und Float-Summen können per fma anders runden. Dann ergibt derselbe Seed auf einer anderen GPU ein anderes Terrain.
 - NICHT den Noise-Hash ändern, ohne `SAVE_VERSION` (main.js) hochzuzählen, `tests/noise.mjs` nachzuziehen und die Statistik in `uniforms.js` neu zu messen.
@@ -23,7 +23,8 @@ paths:
 2. Offset von Mitglied i+1 = `roundUp(Ende von i, Align(i+1))`.
 3. Nach einem Struct-Mitglied S liegt das nächste bei `≥ roundUp(16, Größe(S))`. naga rundet hier nicht auf, sondern meldet einen Fehler.
 
-Aktuell: `Params` = 25 × f32 = 100 B → `roads` ab Byte 112 = Float-Index 28; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0), Layout-Test `tests/uniforms.layout.mjs`.
+Aktuell: `Params` = 27 × f32 = 108 B → `roads` ab Byte 112 = Float-Index 28; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0);
+`towns` = `MAX_TOWNS` vec4 (x, y, level m, 0) direkt dahinter (`TOWNS_OFFSET`), Puffer = `UNIFORM_FLOATS`. Layout-Test `tests/uniforms.layout.mjs`.
 
 ## Symptome
 Readback nur Nullen oder „road level Infinity“ → Shader-Modul abgelehnt (Browser-Konsole) oder Params-Reihenfolge JS ≠ WGSL

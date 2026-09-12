@@ -8,7 +8,7 @@ import { quantize16, encodeR16, sampleBilinear, resample } from './export.js';
 import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
-import { encodeUniforms, ROADS_OFFSET, autoMaxH } from './uniforms.js';
+import { encodeUniforms, UNIFORM_FLOATS, autoMaxH } from './uniforms.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
 const renderer = new WebGPURenderer({ antialias: true });
@@ -36,7 +36,8 @@ controls.maxPolarAngle = Math.PI / 2 - 0.05;
 controls.minDistance = 40;
 controls.maxDistance = 1200;
 // headless-Prüfung: Kamera setzen, Readback lesen
-if (import.meta.env.DEV) window.dbg = { camera, controls, get heights() { return heights; }, get roadMask() { return roadMask; }, get maxH() { return params.maxH; } };
+if (import.meta.env.DEV) window.dbg = { camera, controls, get heights() { return heights; }, get roadMask() { return roadMask; }, get maxH() { return params.maxH; },
+    get params() { return params; }, get terrain128() { return terrain128; } };
 
 // Sonne ≈ 30° hoch + schwächeres Himmelslicht → Relief auch bei flachen Hügeln lesbar
 scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x3a4a33, 0.7));
@@ -80,13 +81,14 @@ const params = {
     waterAvoid: 2,
     townCount: 5,
     townSpacing: 80,
+    clearingRadius: 15, // m flach um jeden Ort (→ Plan/Roadmap.md R12)
     exitCount: 3,
     extraLinks: 2,
     reuse: 0.4,
 };
 const DEFAULTS = { ...params }; // Basis jedes Presets
 
-const uniformsData = new Float32Array(ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS);
+const uniformsData = new Float32Array(UNIFORM_FLOATS);
 
 const device = renderer.backend.device;
 if (!device) throw new Error('No WebGPU device (WebGL fallback active?)');
@@ -143,8 +145,8 @@ async function generate() {
 
     // Prepass: 128² Roh-Terrain (ohne Straßen, mit Rand-Ring; die Randzone sperrt das Routing selbst)
     // → Routing-Daten für roadgen (→ Plan/PresetsAusfahrten.md)
-    encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0 },
-        new Float32Array(MAX_ROADS * ROAD_POINTS * 2), new Float32Array(MAX_ROADS * ROAD_POINTS), uniformsData);
+    encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0, clearingCount: 0 },
+        new Float32Array(MAX_ROADS * ROAD_POINTS * 2), new Float32Array(MAX_ROADS * ROAD_POINTS), [], uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(PRE);
     const pre = await readBuffer(heightBuf, PRE * PRE * 4);
@@ -160,11 +162,11 @@ async function generate() {
     console.log(`Prepass 128²: min ${pMn.toFixed(1)} m · max ${pMx.toFixed(1)} m`);
 
     const tr = performance.now();
-    const { points: roads, levels, count, nodes } = generateRoads(params.seed, MAP, { size: PRE, data: terrain128 }, params);
+    const { points: roads, levels, count, nodes, towns } = generateRoads(params.seed, MAP, { size: PRE, data: terrain128 }, params);
     const roadMs = performance.now() - tr;
-    console.log(`Road network: ${nodes.filter(n => !n.exit).length} towns · ${nodes.filter(n => n.exit).length} exits · ${count} roads · ${roadMs.toFixed(0)} ms`);
+    console.log(`Road network: ${towns.length} towns · ${nodes.filter(n => n.exit).length} exits · ${count} roads · ${roadMs.toFixed(0)} ms`);
     const tg = performance.now();
-    encodeUniforms({ ...params, mapSize: MAP, res: RES, roadCount: count }, roads, levels, uniformsData);
+    encodeUniforms({ ...params, mapSize: MAP, res: RES, roadCount: count, clearingCount: towns.length }, roads, levels, towns, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(RES);
     // Kopien laufen in Submit-Reihenfolge nach dem Dispatch

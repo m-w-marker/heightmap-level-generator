@@ -1,5 +1,6 @@
 // Panel: Toolbar + Tabs, je Tab ein lil-gui (→ Plan/UI.md). Hier nur Aufbau + Metadaten, Logik kommt als Callbacks.
 import { GUI } from 'lil-gui';
+import { MAX_TOWNS } from './roadgen.js';
 
 // Tab → Gruppe → [Schlüssel, Label, min, max, step, Tooltip]; Gruppe 'Advanced' startet zugeklappt.
 // Schlüssel = params/JSON-Name (unverändert → alte Saves laden weiter)
@@ -27,9 +28,10 @@ export const TABS = {
         ],
     },
     Roads: {
-        // Maxima so, dass MST + Zusatz + Ausfahrten ≤ MAX_ROADS: (8 − 1) + 4 + 4 = 15
+        // Maxima so, dass MST + Zusatz + Ausfahrten ≤ MAX_ROADS: (MAX_TOWNS − 1) + 4 + 4 = 15
         'Road network': [
-            ['townCount', 'Towns', 1, 8, 1, 'Flat, dry spots that get connected by roads.'],
+            ['townCount', 'Towns', 1, MAX_TOWNS, 1, 'Flat, dry spots that get connected by roads.'],
+            ['clearingRadius', 'Town clearing (m)', 0, 40, 1, 'Radius of the flat ground around each town, on the level of its roads; edges like the road banks. 0 = off.'],
             ['exitCount', 'Map exits', 0, 4, 1, 'Roads that leave the map at the foot of the border ring.'],
             ['extraLinks', 'Loops', 0, 4, 1, 'Extra shortcuts between towns, only where the way round is long.'],
             ['roadMaxGrade', 'Max grade (%)', 4, 30, 1, 'Steepest allowed climb; a steeper step becomes a ramp.'],

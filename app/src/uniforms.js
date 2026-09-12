@@ -1,6 +1,6 @@
 // Uniform-Encoding: 1:1 zu struct Params in heightmap.wgsl — die Feldreihenfolge ist der Float-Index.
 // Layout-Regeln + No-Gos → .clinerules/wgsl.md · Layout-Test: tests/uniforms.layout.mjs (→ Plan/Bugfix.md Schritt 2)
-import { MAX_ROADS, ROAD_POINTS } from './roadgen.js';
+import { MAX_ROADS, ROAD_POINTS, MAX_TOWNS } from './roadgen.js';
 
 // Gemessene Noise-Statistik (tests/noise.mjs, 40 Seeds) → Regler wirken in Metern / Flächen-%,
 // bewacht von tests/terrain.stats.mjs (→ Plan/TerrainStrassennetz.md T1)
@@ -60,12 +60,17 @@ export const PARAM_FIELDS = {
     roadSlope: p => p.roadSlope * Math.PI / 180,       // Böschungswinkel ° → rad (tan im Shader nach Variation)
     roadSlopeVar: p => p.roadSlopeVar * Math.PI / 180, // ± Schwankung entlang der Straße
     roadTolerance: p => p.roadTolerance,
+    clearingCount: p => p.clearingCount,   // platzierte Orte (≤ townCount), 0 im Prepass
+    clearingRadius: p => p.clearingRadius, // m flach um den Ort, Böschung wie an der Straße
 };
 
-// Float-Index von roads: Params-Felder auf die 16-Byte-Align des vec4-Arrays aufgefüllt
+// Float-Index von roads: Params-Felder auf die 16-Byte-Align des vec4-Arrays aufgefüllt; towns direkt dahinter
 export const ROADS_OFFSET = Math.ceil(Object.keys(PARAM_FIELDS).length / 4) * 4;
+export const TOWNS_OFFSET = ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS;
+export const UNIFORM_FLOATS = TOWNS_OFFSET + 4 * MAX_TOWNS;
 
-export function encodeUniforms(p, roads, levels, out) {
+// towns: [{x, y, level}] aus generateRoads, höchstens MAX_TOWNS (clearingCount muss dazu passen)
+export function encodeUniforms(p, roads, levels, towns, out) {
     let i = 0;
     for (const f of Object.values(PARAM_FIELDS)) out[i++] = f(p);
     // Rest bis ROADS_OFFSET: Padding (roads muss 16-Byte-aligned liegen)
@@ -75,4 +80,5 @@ export function encodeUniforms(p, roads, levels, out) {
         out[ROADS_OFFSET + 4 * k + 1] = roads[2 * k + 1];
         out[ROADS_OFFSET + 4 * k + 2] = levels[k];
     }
+    towns.slice(0, MAX_TOWNS).forEach((t, k) => out.set([t.x, t.y, t.level, 0], TOWNS_OFFSET + 4 * k));
 }

@@ -75,7 +75,7 @@ R18 README (ganz am Ende)
 - [x] R9 Splatmap im 3D (Rampe war schon als 512²-Vertex-Farben da → Straßenränder Sägezahn; jetzt 1024²-Preview als `DataTexture` mit Mipmaps, Farbwechsel ohne Mesh-Neubau; headless Favorite/Mountains/Lakes fern + nah: Ränder glatt, Farben gleich hell) — geprüft am 2026-09-12
 - [x] R10 glTF-Export (`.glb` = angezeigtes 512²-Mesh + 1024²-Textur eingebettet, ~16 MB, 0,7 s; headless: GLTFLoader lädt, Textur pixelgleich zur Preview, UV (0,0) an Ecke −200/−200; Blender 5.1: 400,0 × 400,0 m, 262 144 Vertices, Textur sRGB) — geprüft am 2026-09-12
 - [ ] R11 Texturierung im Tool — geprüft am
-- [ ] R12 Lichtungen — geprüft am
+- [x] R12 Lichtungen (`clearingRadius` 15 m, Level = Mittel der Straßen-Enden am Ort, Rand per `bank()` wie die Straßen-Böschung statt fester Breite — erster Versuch mit `smoothstep` ergab Tafelberge; `towns` hinter `roads` im Uniform, `UNIFORM_FLOATS`; Layout- + Sanity-Test; headless 4 Presets: Kern flach ≤ Toleranzband, Radius 0 = alter Stand bis 1 ULP) — geprüft am 2026-09-12
 - [ ] R13 Seed-Vergleich — geprüft am
 - [ ] R14 Walk-Modus — geprüft am
 - [ ] R15 Erosion + Flow-Map — geprüft am

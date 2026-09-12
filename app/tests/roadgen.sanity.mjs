@@ -79,6 +79,26 @@ const bumpRes = generateRoads(seed, mapSize, bumpTerrain(), opts);
     }
 }
 
+// Lichtungen (R12): je Ort ein Eintrag, Level = Mittel der Straßen-Enden am Ort (keine Stufe an der Einfahrt);
+// Ort ohne Straße → Level-Feld + Offset
+{
+    const towns = bumpRes.nodes.filter(n => !n.exit);
+    check(bumpRes.towns.length === towns.length && bumpRes.towns.every((t, k) => t.x === towns[k].x && t.y === towns[k].y),
+        `towns = ${towns.length} Orte (ohne Ausfahrten)`);
+    let worst = 0;
+    bumpRes.towns.forEach((t, k) => {
+        const ends = [];
+        bumpRes.edges.forEach(([ia, ib], r) => {
+            if (ia === k) ends.push(bumpRes.levels[r * ROAD_POINTS]);
+            if (ib === k) ends.push(bumpRes.levels[r * ROAD_POINTS + ROAD_POINTS - 1]);
+        });
+        for (const e of ends) worst = Math.max(worst, Math.abs(e - t.level));
+    });
+    check(worst < opts.roadTolerance, `Orts-Level vs. Straßen-Enden max Δ ${worst.toFixed(2)} m < roadTolerance`);
+    const lone = generateRoads(seed, mapSize, flatTerrain(), { ...opts, townCount: 1, exitCount: 0 });
+    check(lone.count === 0 && lone.towns.length === 1 && Math.abs(lone.towns[0].level - 32) < 0.01, 'einzelner Ort ohne Straße: Level 30 m + 2 m Offset');
+}
+
 // Kein Parallelband: Punkte 3–15 m neben einer fremden Straße, deren Abstand dabei gleich bleibt
 // (< 2 m Änderung zum Nachbarpunkt; Y-Einmündungen verjüngen sich stetig → zählen nicht), nicht am Knoten; < 5 %
 for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
@@ -260,4 +280,4 @@ if (fail) {
     console.error(`${fail} Checks fehlgeschlagen`);
     process.exit(1);
 }
-console.log(`roadgen-Sanity: OK — Netz (${a.count} Straßen), Knoten→Knoten, deterministisch, Hügel-Umgehung, kein Parallelband, Level-Feld, Randzone, Laufzeit`);
+console.log(`roadgen-Sanity: OK — Netz (${a.count} Straßen), Knoten→Knoten, deterministisch, Hügel-Umgehung, kein Parallelband, Level-Feld, Orts-Level, Randzone, Laufzeit`);
