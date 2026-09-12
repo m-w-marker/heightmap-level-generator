@@ -64,7 +64,7 @@ function fitView(size) {
 }
 // headless-Prüfung: Kamera setzen, Readback lesen
 if (import.meta.env.DEV) window.dbg = { camera, controls, scene, get heights() { return heights; }, get roadMask() { return roadMask; }, get maxH() { return params.maxH; },
-    get params() { return params; }, get terrain128() { return terrain128; }, get water() { return water; } };
+    get params() { return params; }, get terrain128() { return terrain128; }, get water() { return water; }, get townMask() { return townMask; } };
 
 // Sonne ≈ 30° hoch + schwächeres Himmelslicht → Relief auch bei flachen Hügeln lesbar
 scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x3a4a33, 0.7));
@@ -148,18 +148,19 @@ const pipeline = device.createComputePipeline({
 // Roh-Terrain für die Erosion (Entry raw, eigenes auto-Layout: nur Uniform + heights)
 const rawPipeline = device.createComputePipeline({ layout: 'auto', compute: { module: shaderModule, entryPoint: 'raw' } });
 
-// Ausgänge res² (heights, roadMask, Wasserspiegel m je Pixel) für die größte Map; ein Export mit Detail ×2 lässt sie einmalig
-// wachsen (→ Plan/ExportZiele.md). Nur innerhalb von serial() aufrufen → kein Pass läuft auf einem zerstörten Puffer
-let heightBuf, roadMaskBuf, waterBuf, bind, rawBind, bufRes = 0;
+// Ausgänge res² (heights, roadMask, Wasserspiegel m je Pixel, townMask) für die größte Map; ein Export mit Detail ×2 lässt sie
+// einmalig wachsen (→ Plan/ExportZiele.md). Nur innerhalb von serial() aufrufen → kein Pass läuft auf einem zerstörten Puffer
+let heightBuf, roadMaskBuf, waterBuf, townMaskBuf, bind, rawBind, bufRes = 0;
 function ensureBuffers(res) {
     if (res <= bufRes) return;
     if (res * res * 4 > device.limits.maxStorageBufferBindingSize) throw new Error(`${res}² px exceeds the GPU storage buffer limit`);
-    for (const b of [heightBuf, roadMaskBuf, waterBuf]) b?.destroy();
-    [heightBuf, roadMaskBuf, waterBuf] = [0, 1, 2].map(() =>
+    for (const b of [heightBuf, roadMaskBuf, waterBuf, townMaskBuf]) b?.destroy();
+    [heightBuf, roadMaskBuf, waterBuf, townMaskBuf] = [0, 1, 2, 3].map(() =>
         device.createBuffer({ size: res * res * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC }));
+    // Reihenfolge = @binding 0–6 in heightmap.wgsl (Layout-Test prüft)
     bind = device.createBindGroup({
         layout: pipeline.getBindGroupLayout(0),
-        entries: [uniformsBuf, heightBuf, roadMaskBuf, erosion.delta, waterBuf, lakesBuf].map((buffer, binding) => ({ binding, resource: { buffer } })),
+        entries: [uniformsBuf, heightBuf, roadMaskBuf, erosion.delta, waterBuf, lakesBuf, townMaskBuf].map((buffer, binding) => ({ binding, resource: { buffer } })),
     });
     rawBind = device.createBindGroup({
         layout: rawPipeline.getBindGroupLayout(0),
@@ -172,6 +173,7 @@ ensureBuffers(GMAX.res);
 let heights = new Float32Array(RES * RES);
 let roadMask = new Float32Array(RES * RES);
 let water = new Float32Array(RES * RES); // Spiegel von See/Fluss m je Pixel, 0 = nur Meer (→ spiegel())
+let townMask = new Float32Array(RES * RES); // Lichtungen 0–1, nur für den Export
 
 
 // Readback: Staging MAP_READ + copyBufferToBuffer + mapAsync (→ .clinerules/wgsl.md)
@@ -237,8 +239,8 @@ async function computeMapNow(p, res) {
     queue.writeBuffer(lakesBuf, 0, hydro?.lakes ?? NO_LAKES.subarray(0, PRE * PRE)); // aus → Nullen, sonst stünden die Seen des letzten Laufs
     dispatch(res);
     // Kopien laufen in Submit-Reihenfolge nach dem Dispatch
-    const [h, m, w] = await Promise.all([heightBuf, roadMaskBuf, waterBuf].map(b => readBuffer(b, res * res * 4)));
-    return { terrain, net, hydro, heights: h, roadMask: m, water: w, gpuMs: tr - t0 + performance.now() - tg, roadMs: tg - tr };
+    const [h, m, w, tm] = await Promise.all([heightBuf, roadMaskBuf, waterBuf, townMaskBuf].map(b => readBuffer(b, res * res * 4)));
+    return { terrain, net, hydro, heights: h, roadMask: m, water: w, townMask: tm, gpuMs: tr - t0 + performance.now() - tg, roadMs: tg - tr };
 }
 
 async function generate() {
@@ -248,7 +250,7 @@ async function generate() {
     // Kopie: Regler/Preset während der awaits → sonst Straßen des neuen Stands auf dem Terrain des alten
     const map = await computeMap({ ...params }, g.res);
     if (params.mapSize !== size) return; // Mesh passte nicht mehr zur Map-Größe; die dabei geplante Regeneration zeigt die neue
-    ({ terrain: terrain128, heights, roadMask, water } = map);
+    ({ terrain: terrain128, heights, roadMask, water, townMask } = map);
     hiSrc = null;
     if (g.res !== RES) {
         resizeView(g);
@@ -706,9 +708,9 @@ const exp = { target: 'unreal', size: 0, detail: 1 };
 // Detail ×2: Final-Pass in 2·RES neu (dieselbe Pipeline, schärfere Straßen-/Uferkanten), gecacht bis zur nächsten Regeneration
 let hiSrc = null;
 async function exportSource() {
-    if (exp.detail === 1) return { N: RES, heights, roadMask, water, slope };
+    if (exp.detail === 1) return { N: RES, heights, roadMask, water, townMask, slope };
     const N = 2 * RES, p = { ...params };
-    hiSrc ??= computeMap(p, N).then(m => ({ N, heights: m.heights, roadMask: m.roadMask, water: m.water,
+    hiSrc ??= computeMap(p, N).then(m => ({ N, heights: m.heights, roadMask: m.roadMask, water: m.water, townMask: m.townMask,
         slope: slopeRelief(m.heights, N, p.maxH, p.mapSize).slope }), e => { hiSrc = null; throw e; });
     return hiSrc;
 }

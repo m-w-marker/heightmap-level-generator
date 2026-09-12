@@ -82,6 +82,19 @@ check(/lakeN = u32\(u\.params\.lakeRes\)/.test(wgsl) && /lakes\[u32\(c\.y\) \* l
     check(out.every(Number.isFinite), 'encodeErosion: alle Felder endlich');
 }
 
+// Bindings heightmap.wgsl ↔ Bind-Group in main.js: Reihenfolge der Puffer = @binding 0…n, lückenlos; ≤ 8 Storage-Puffer
+{
+    const binds = [...wgsl.matchAll(/@binding\((\d+)\) var<(\w+)[^>]*> (\w+)/g)].map(m => ({ k: +m[1], space: m[2], name: m[3] }));
+    check(binds.every((b, i) => b.k === i), `WGSL-Bindings lückenlos 0…${binds.length - 1}`);
+    check(binds.filter(b => b.space === 'storage').length <= 8, 'heightmap.wgsl: ≤ 8 Storage-Puffer');
+    const m = mainJs.match(/layout: pipeline\.getBindGroupLayout\(0\),\s*entries: \[([^\]]*)\]/);
+    const js = m ? m[1].split(',').map(s => s.trim()) : [];
+    const want = ['uniformsBuf', 'heightBuf', 'roadMaskBuf', 'erosion.delta', 'waterBuf', 'lakesBuf', 'townMaskBuf'];
+    check(JSON.stringify(js) === JSON.stringify(want), `main.js Bind-Group = ${want.join(', ')} (ist ${js.join(', ')})`);
+    check(JSON.stringify(binds.map(b => b.name)) === JSON.stringify(['u', 'heights', 'roadMask', 'erosionDelta', 'water', 'lakes', 'townMask']),
+        `WGSL-Bindings = u, heights, roadMask, erosionDelta, water, lakes, townMask (ist ${binds.map(b => b.name).join(', ')})`);
+}
+
 // Encode-Puffer in main.js = UNIFORM_FLOATS (sonst verwirft das TypedArray die Orte still)
 check(/uniformsData\s*=\s*new Float32Array\(UNIFORM_FLOATS\)/.test(mainJs), 'main.js: uniformsData = new Float32Array(UNIFORM_FLOATS)');
 

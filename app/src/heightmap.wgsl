@@ -58,6 +58,7 @@ const CLEARING_BANK = 0.268; // tan 15°: Lichtungsrand startet flacher als die 
 const CLEARING_WOBBLE = 0.5; // Radius ±50 % per Noise → unregelmäßiger Umriss statt Kreis
 const CLEARING_WAVE = 9.0;   // m Wellenlänge des Umriss-Noise (≈ Radius → 2–4 Ausbuchtungen je Lichtung)
 const CLEARING_KEEP = 0.5;   // m Restwelligkeit im Kern → nicht spiegelglatt
+const TOWN_FADE = 4.0;       // m weicher Rand der townMask hinter dem Lichtungs-Umriss
 
 // Punkt / Ort = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
@@ -74,6 +75,7 @@ struct Uniforms {
 @group(0) @binding(3) var<storage, read> erosionDelta: array<f32>; // erosionRes², erodiert − roh in m
 @group(0) @binding(4) var<storage, read_write> water: array<f32>;  // res², Spiegel von See/Fluss in m, 0 = nur Meer
 @group(0) @binding(5) var<storage, read> lakes: array<f32>;        // lakeRes², See-Spiegel in m (0 = kein See)
+@group(0) @binding(6) var<storage, read_write> townMask: array<f32>; // res², Lichtung 1 → 0 über TOWN_FADE (nur Export)
 
 // --- Noise ---
 
@@ -227,10 +229,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let cr = u.params.clearingRadius;
     let nTowns = select(0u, min(u32(u.params.clearingCount), MAX_TOWNS), cr > 0.0); // Radius 0 = aus
     let wobble = 1.0 + CLEARING_WOBBLE * vnoise(w / CLEARING_WAVE, layerKey(7u));
+    var townM = 0.0;
     for (var t = 0u; t < nTowns; t = t + 1u) {
         let c = u.towns[t];
-        let e = CLEARING_KEEP + bank(max(length(w - c.xy) - cr * wobble, 0.0), CLEARING_BANK);
+        let dOut = max(length(w - c.xy) - cr * wobble, 0.0);
+        let e = CLEARING_KEEP + bank(dOut, CLEARING_BANK);
         h = c.z + e * tanh(clamp((h - c.z) / e, -10.0, 10.0)); // clamp: tanh großer Argumente → exp-Überlauf (NaN) je GPU
+        townM = max(townM, 1.0 - smoothstep(0.0, TOWN_FADE, dOut));
     }
 
     // 4) Straßen: nächstes Segment liefert Distanz + Level (linear zwischen den Endpunkten) (→ .clinerules/wgsl.md)
@@ -319,4 +324,5 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let lane = dMin < u.params.roadHalfWidth + 0.5; // = roadMask ≥ 0.5
     water[idx] = select(0.0, wl, wl > u.params.waterLevel && hPre < wl && h >= hPre - 0.01 && !(nRoads > 0u && lane));
     roadMask[idx] = 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + 1.0, dMin); // nur Fahrbahn (Farbe)
+    townMask[idx] = townM;
 }
