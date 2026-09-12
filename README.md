@@ -2,7 +2,7 @@
 
 Procedural heightmap & terrain generator for game levels, running on WebGPU compute shaders (WGSL) in the browser.
 Generates a heightmap at 0.39 m per pixel (1024×1024 for the default 400 m map, 2560×2560 at 1000 m) with roads, towns, cliffs, hills,
-mountains, erosion, rivers and lakes inside a closed border ring — tweak everything live, walk through it and export
+mountains, erosion, rivers and lakes inside a closed border ring. Tweak everything live, walk through it and export
 heightmap, masks and mesh for your engine.
 
 **▶ Try it in your browser: https://m-w-marker.github.io/heightmap-level-generator/** (needs WebGPU, e.g. current desktop Chrome or Edge)
@@ -12,37 +12,37 @@ heightmap, masks and mesh for your engine.
 ## Features
 
 **Terrain**
-- **GPU generation** — WGSL compute shader, regenerates while you drag sliders; generation time shown in the panel
-- **Seed-based** — same seed + parameters, same terrain; compare 12 seeds side by side (⊞) and pick one
-- **Cliffs, hills, mountains** — amplitudes in meters, coverage in % of the map
-- **Erosion** — rain and scree wear the terrain on the GPU: gullies on the flanks, sediment in the valleys, optional
+- **GPU generation**: WGSL compute shader, regenerates while you drag sliders; generation time shown in the panel
+- **Seed-based**: same seed + parameters, same terrain; compare 12 seeds side by side (⊞) and pick one
+- **Cliffs, hills, mountains**: amplitudes in meters, coverage in % of the map
+- **Erosion**: rain and scree wear the terrain on the GPU (gullies on the flanks, sediment in the valleys), optional
   scree slopes below cliffs (off by default; *Eroded mountains* preset)
-- **Rivers and lakes** — rivers grow from the drainage of the terrain and run downhill into lakes, the sea or the foot
+- **Rivers and lakes**: rivers grow from the drainage of the terrain and run downhill into lakes, the sea or the foot
   of the border ring; hollows fill up to their outflow and become lakes with their own water level; a real water
   surface in 3D (*River valley* preset)
-- **Border ring** — closed raised terrain around the map edge that hides the horizon; exit roads end at its foot
-- **Map size** — 200–1000 m; all meter values keep their meaning, a larger map shows more of the same landscape at the
+- **Border ring**: closed raised terrain around the map edge that hides the horizon; exit roads end at its foot
+- **Map size**: 200–1000 m; all meter values keep their meaning, a larger map shows more of the same landscape at the
   same detail (all grids grow with it; ~1 s per generation at 1000 m)
-- **Auto height range** — `maxH` is derived from the settings, nothing gets clipped
+- **Auto height range**: `maxH` is derived from the settings, nothing gets clipped
 
 **Roads**
-- **Road network** — towns on flat, dry ground plus map exits, connected by a spanning tree with extra loops (only
+- **Road network**: towns on flat, dry ground plus map exits, connected by a spanning tree with extra loops (only
   where they are a real shortcut); routed around steep slopes and water, later roads merge into existing ones
-- **Lies on the landscape** — the road follows the terrain within a tolerance band; cuts and banks only where the
+- **Lies on the landscape**: the road follows the terrain within a tolerance band; cuts and banks only where the
   terrain demands it, with varying steepness; towns sit on organic flat clearings
-- **Grade limit** — `roadMaxGrade` caps how steep a road may climb: routing looks for gaps instead of driving down a
+- **Grade limit**: `roadMaxGrade` caps how steep a road may climb; routing looks for gaps instead of driving down a
   cliff, unavoidable climbs become ramps, consistent across the whole network
-- **Never under water** — roads avoid lakes and rivers and cross them on a raised embankment
+- **Never under water**: roads avoid lakes and rivers and cross them on a raised embankment
 
 **Tool**
-- **2D map + 3D preview** — top-down color map and a lit 3D mesh (three.js) with the same colors
-- **Walk mode** (🚶) — first-person at eye height on the terrain: mouse to look, WASD / arrows to move, Shift to run, Esc to leave
-- **Compact panel** — toolbar and three tabs (Terrain, Roads, World); labels with units, a tooltip per slider, rarely
+- **2D map + 3D preview**: top-down color map and a lit 3D mesh (three.js) with the same colors
+- **Walk mode** (🚶): first-person at eye height on the terrain; mouse to look, WASD / arrows to move, Shift to run, Esc to leave
+- **Compact panel**: toolbar and three tabs (Terrain, Roads, World); labels with units, a tooltip per slider, rarely
   used ones under *Advanced*
-- **Undo / redo** — Ctrl+Z / Ctrl+Y over all settings
-- **Share link** — the URL always holds all settings; *Link* copies it, the same map opens in any WebGPU browser
-- **Presets** — Rolling hills, Pasture, Mountains, Canyon / Plateaus, Lakes, Eroded mountains, River valley, plus defaults
-- **Save / Load** — all settings incl. seed as JSON; every JSON in `app/presets/` shows up in the preset list
+- **Undo / redo**: Ctrl+Z / Ctrl+Y over all settings
+- **Share link**: the URL always holds all settings; *Link* copies it, the same map opens in any WebGPU browser
+- **Presets**: Rolling hills, Pasture, Mountains, Canyon / Plateaus, Lakes, Eroded mountains, River valley, plus defaults
+- **Save / Load**: all settings incl. seed as JSON; every JSON in `app/presets/` shows up in the preset list
 
 **Export** (native size = 0.39 m per pixel, or 513 / 1025 / 2049 px vertex grids for Unreal landscapes)
 - Heightmap as 16-bit PNG and as RAW `.r16` (~2 mm steps), plus an 8-bit preview PNG
@@ -68,7 +68,7 @@ Open http://localhost:5173 (on Windows, `start.bat` does both).
 
 **Save** writes all parameters including the seed as JSON (Chrome/Edge open a save dialog, other browsers
 download the file). **Load** reads such a file back. Put a JSON into `app/presets/` and it appears in the
-preset list — `Favorite.json` is an example. **Link** copies a URL with the same settings.
+preset list. `Favorite.json` is an example. **Link** copies a URL with the same settings.
 
 ## Parameters
 
