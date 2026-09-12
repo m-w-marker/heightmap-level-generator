@@ -1,13 +1,24 @@
 # Heightmap Level Generator
 
-Procedural heightmap & terrain generator for game levels, running on WebGPU compute shaders (WGSL) in the browser.
-Generates a heightmap at 0.5 m per pixel (1024×1024 for the default 512 m map, 2560×2560 at 1280 m) with roads, towns, cliffs, hills,
-mountains, erosion, rivers and lakes inside a closed border ring. Tweak everything live, walk through it and export
-heightmap, masks and mesh for your engine.
+**Free procedural terrain and heightmap generator for Unreal Engine, Unity and Godot, running in your browser.
+No install, no account.**
+
+Generates game-ready terrain on the GPU (WebGPU compute shaders, WGSL): a 16-bit heightmap at 0.5 m per pixel
+(1024×1024 for the default 512 m map, up to 2560×2560 at 1280 m) with a road network, towns, cliffs, hills, mountains,
+erosion, rivers and lakes inside a closed border ring. Tweak everything live, walk through it in first person and
+export heightmap, splatmap, masks, road and town layout and a 3D mesh for your engine: Unreal Engine landscape
+(16-bit PNG / `.r16`), Unity terrain (`.r16`), Godot Terrain3D or three.js / glTF.
 
 **▶ Try it in your browser: https://m-w-marker.github.io/heightmap-level-generator/** (needs WebGPU, e.g. current desktop Chrome or Edge)
 
-![Generator: 3D terrain with lakes, rivers and roads, 2D map and parameter panel](docs/generator.png)
+![Procedural terrain generator in the browser: 3D terrain with erosion, lakes, rivers and roads, 2D heightmap preview and parameter panel](docs/generator.png)
+
+## Use cases
+
+- Blockout and prototype terrain for open-world, survival and racing levels
+- Heightmaps for Unreal Engine 5 landscapes, Unity terrains and Godot Terrain3D, with the import values in the metadata
+- Road splines, town clearings and water masks as input for PCG, Houdini or your own placement scripts
+- Terrain for WebGPU / three.js scenes (glTF mesh with color texture)
 
 ## Features
 
