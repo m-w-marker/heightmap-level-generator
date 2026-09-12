@@ -116,11 +116,14 @@ export function encodeUniforms(p, roads, levels, towns, rivers, out) {
     let i = 0;
     for (const f of Object.values(PARAM_FIELDS)) out[i++] = f(p);
     // Rest bis ROADS_OFFSET: Padding (roads muss 16-Byte-aligned liegen)
-    // 1 Punkt = vec4(x, y, level, 0) — f32-/vec2-Arrays sind im uniform-Adressraum ungültig (→ .clinerules/wgsl.md)
+    // 1 Punkt = vec4(x, y, level, s) — f32-/vec2-Arrays sind im uniform-Adressraum ungültig (→ .clinerules/wgsl.md);
+    // s = Bogenlänge ab Straßenanfang in m (Markierungen, → Plan/Biome.md)
     for (let k = 0; k < MAX_ROADS * ROAD_POINTS; k++) {
-        out[ROADS_OFFSET + 4 * k] = roads[2 * k];
-        out[ROADS_OFFSET + 4 * k + 1] = roads[2 * k + 1];
-        out[ROADS_OFFSET + 4 * k + 2] = levels[k];
+        const o = ROADS_OFFSET + 4 * k;
+        out[o] = roads[2 * k];
+        out[o + 1] = roads[2 * k + 1];
+        out[o + 2] = levels[k];
+        out[o + 3] = k % ROAD_POINTS ? out[o - 1] + Math.hypot(roads[2 * k] - roads[2 * k - 2], roads[2 * k + 1] - roads[2 * k - 1]) : 0;
     }
     towns.slice(0, MAX_TOWNS).forEach((t, k) => out.set([t.x, t.y, t.level, 0], TOWNS_OFFSET + 4 * k));
     if (rivers) out.set(rivers, RIVERS_OFFSET);

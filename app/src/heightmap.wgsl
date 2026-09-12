@@ -59,8 +59,14 @@ const CLEARING_WOBBLE = 0.5; // Radius ±50 % per Noise → unregelmäßiger Umr
 const CLEARING_WAVE = 9.0;   // m Wellenlänge des Umriss-Noise (≈ Radius → 2–4 Ausbuchtungen je Lichtung)
 const CLEARING_KEEP = 0.5;   // m Restwelligkeit im Kern → nicht spiegelglatt
 const TOWN_FADE = 4.0;       // m weicher Rand der townMask hinter dem Lichtungs-Umriss (= TOWN_FADE in masks.js)
+// Straßen-Koordinaten roadUV (→ Plan/Biome.md, Codierung in masks.js)
+const DASH_PERIOD = 12.0;    // m Strich + Lücke (= DASH_PERIOD in masks.js)
+const UV_REACH = 1.5;        // m über die Fahrbahnkante: so weit gilt die Straße mit dem kleinsten Index
+const PARALLEL_COS = 0.94;   // |cos| ≥ 20°-Grenze: geteilte Strecken (Road sharing) sind parallel, keine Kreuzung
+const MARK_GAP = 1.0;        // m: Markierungen enden so weit vor einer kreuzenden Fahrbahn / einem Ortsrand
+const MARK_FADE = 4.0;       // m Ausblenden danach
 
-// Punkt / Ort = vec4(x, y, level m, 0)
+// Punkt = vec4(x, y, level m, Bogenlänge m), Ort = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
 struct Uniforms {
     params: Params,
@@ -76,6 +82,7 @@ struct Uniforms {
 @group(0) @binding(4) var<storage, read_write> water: array<f32>;  // res², Spiegel von See/Fluss in m, 0 = nur Meer
 @group(0) @binding(5) var<storage, read> lakes: array<f32>;        // lakeRes², See-Spiegel in m (0 = kein See)
 @group(0) @binding(6) var<storage, read_write> townMask: array<f32>; // res², Lichtung 1 → 0 über TOWN_FADE (nur Export)
+@group(0) @binding(7) var<storage, read_write> roadUV: array<u32>;   // res², RGBA8 (pack4x8unorm) fürs Material
 
 // --- Noise ---
 
@@ -242,8 +249,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var roadL = 0.0;
     var dMin = 1e9;
     let nRoads = min(u32(u.params.roadCount), MAX_ROADS);
+    // je Straße ihr nächstes Segment: Abstand, Querabstand mit Seite, Bogenlänge, Richtung → roadUV
+    var rD: array<f32, MAX_ROADS>;
+    var rLat: array<f32, MAX_ROADS>;
+    var rS: array<f32, MAX_ROADS>;
+    var rDir: array<vec2<f32>, MAX_ROADS>;
     for (var r = 0u; r < nRoads; r = r + 1u) {
         let base = r * ROAD_POINTS;
+        rD[r] = 1e9;
         for (var s = 0u; s + 1u < ROAD_POINTS; s = s + 1u) {
             let a = u.roads[base + s];
             let b = u.roads[base + s + 1u];
@@ -251,6 +264,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             if (dt.x < dMin) {
                 dMin = dt.x;
                 roadL = mix(a.z, b.z, dt.y);
+            }
+            if (dt.x < rD[r]) {
+                let ab = b.xy - a.xy;
+                let pa = w - a.xy;
+                rD[r] = dt.x;
+                rLat[r] = select(dt.x, -dt.x, ab.x * pa.y - ab.y * pa.x < 0.0);
+                rS[r] = mix(a.w, b.w, dt.y);
+                rDir[r] = ab / max(length(ab), 1e-6);
             }
         }
     }
@@ -325,4 +346,29 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     water[idx] = select(0.0, wl, wl > u.params.waterLevel && hPre < wl && h >= hPre - 0.01 && !(nRoads > 0u && lane));
     roadMask[idx] = 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + 1.0, dMin); // nur Fahrbahn (Farbe)
     townMask[idx] = townM;
+    roadUV[idx] = roadCoords(w, nRoads, &rD, &rLat, &rS, &rDir);
+}
+
+// Koordinaten der Straße mit dem kleinsten Index in Reichweite, nicht der nächsten: geteilte Strecken (Road sharing) liegen
+// als zwei leicht versetzte Polylines übereinander → die nächste wechselte ständig, Querabstand und Strich-Phase sprängen.
+// Markierung aus nahe einer nicht parallelen Straße (Kreuzung, Abzweig) und an Orten
+fn roadCoords(w: vec2<f32>, nRoads: u32, rD: ptr<function, array<f32, MAX_ROADS>>, rLat: ptr<function, array<f32, MAX_ROADS>>,
+              rS: ptr<function, array<f32, MAX_ROADS>>, rDir: ptr<function, array<vec2<f32>, MAX_ROADS>>) -> u32 {
+    let hw = u.params.roadHalfWidth;
+    var c = MAX_ROADS;
+    for (var r = 0u; r < nRoads; r = r + 1u) {
+        if ((*rD)[r] < hw + UV_REACH) { c = r; break; }
+    }
+    if (c == MAX_ROADS) { return 0u; }
+    var dCross = 1e9;
+    for (var r = 0u; r < nRoads; r = r + 1u) {
+        if (r != c && abs(dot((*rDir)[r], (*rDir)[c])) < PARALLEL_COS) { dCross = min(dCross, (*rD)[r]); }
+    }
+    var allow = smoothstep(hw + MARK_GAP, hw + MARK_GAP + MARK_FADE, dCross);
+    let tr = u.params.clearingRadius * (1.0 + CLEARING_WOBBLE) + MARK_GAP;
+    for (var t = 0u; t < min(u32(u.params.clearingCount), MAX_TOWNS); t = t + 1u) {
+        allow *= smoothstep(tr, tr + MARK_FADE, length(w - u.towns[t].xy));
+    }
+    let ph = (*rS)[c] / DASH_PERIOD * 6.2831853;
+    return pack4x8unorm(vec4<f32>(clamp((*rLat)[c] / hw, -1.0, 1.0) * 0.5 + 0.5, cos(ph) * 0.5 + 0.5, sin(ph) * 0.5 + 0.5, allow));
 }

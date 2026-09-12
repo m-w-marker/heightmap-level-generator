@@ -86,6 +86,9 @@ export const flowScale = f => Math.max(Float32Array.from(f).sort()[Math.floor(0.
 // Flächen-Masken (→ Plan/StadtStrassenMasken.md): weiche Kante statt Schwarz-Weiß, harte Grenze = Schwelle 128
 export const WATER_FADE = 0.4; // m Wassertiefe bis voll: Water mask und Deckkraft des Wasser-Meshes
 export const TOWN_FADE = 4;    // m weicher Rand der Town mask = TOWN_FADE in heightmap.wgsl (Layout-Test prüft)
+// Straßen-Koordinaten roadUV (heightmap.wgsl, RGBA8 je Pixel): R Querabstand / halbe Breite · 0.5 + 0.5, GB Phase der
+// Strich-Periode als (cos, sin) · 0.5 + 0.5 (linear filterbar ohne Naht am Umbruch), A Markierung erlaubt (0 an Kreuzungen/Orten)
+export const DASH_PERIOD = 12; // m Strich + Lücke der Mittellinie = DASH_PERIOD in heightmap.wgsl (Layout-Test prüft)
 
 // --- 8 Bit für den Export ---
 const byte = v => Math.round(Math.min(Math.max(v, 0), 1) * 255);

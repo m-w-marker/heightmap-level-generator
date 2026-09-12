@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, RIVERS_OFFSET, UNIFORM_FLOATS, EROSION_FIELDS, EROSION_FLOATS, grids, RES_MIN, RES_MAX, encodeUniforms, encodeErosion } from '../src/uniforms.js';
 import { MAX_ROADS, ROAD_POINTS, MAX_TOWNS } from '../src/roadgen.js';
 import { MAX_RIVERS, RIVER_POINTS, RIVER_WET, RIVER_SINK } from '../src/hydro.js';
-import { TOWN_FADE } from '../src/masks.js';
+import { TOWN_FADE, DASH_PERIOD } from '../src/masks.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const wgsl = readFileSync(join(root, 'src', 'heightmap.wgsl'), 'utf8');
@@ -48,7 +48,7 @@ for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS
     const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)u;`));
     check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
 }
-for (const [name, val] of [['RIVER_WET', RIVER_WET], ['RIVER_SINK', RIVER_SINK], ['TOWN_FADE', TOWN_FADE]]) {
+for (const [name, val] of [['RIVER_WET', RIVER_WET], ['RIVER_SINK', RIVER_SINK], ['TOWN_FADE', TOWN_FADE], ['DASH_PERIOD', DASH_PERIOD]]) {
     const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*([\\d.]+);`));
     check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
 }
@@ -90,16 +90,16 @@ check(/lakeN = u32\(u\.params\.lakeRes\)/.test(wgsl) && /lakes\[u32\(c\.y\) \* l
     check(binds.filter(b => b.space === 'storage').length <= 8, 'heightmap.wgsl: ≤ 8 Storage-Puffer');
     const m = mainJs.match(/layout: pipeline\.getBindGroupLayout\(0\),\s*entries: \[([^\]]*)\]/);
     const js = m ? m[1].split(',').map(s => s.trim()) : [];
-    const want = ['uniformsBuf', 'heightBuf', 'roadMaskBuf', 'erosion.delta', 'waterBuf', 'lakesBuf', 'townMaskBuf'];
+    const want = ['uniformsBuf', 'heightBuf', 'roadMaskBuf', 'erosion.delta', 'waterBuf', 'lakesBuf', 'townMaskBuf', 'roadUVBuf'];
     check(JSON.stringify(js) === JSON.stringify(want), `main.js Bind-Group = ${want.join(', ')} (ist ${js.join(', ')})`);
-    check(JSON.stringify(binds.map(b => b.name)) === JSON.stringify(['u', 'heights', 'roadMask', 'erosionDelta', 'water', 'lakes', 'townMask']),
-        `WGSL-Bindings = u, heights, roadMask, erosionDelta, water, lakes, townMask (ist ${binds.map(b => b.name).join(', ')})`);
+    check(JSON.stringify(binds.map(b => b.name)) === JSON.stringify(['u', 'heights', 'roadMask', 'erosionDelta', 'water', 'lakes', 'townMask', 'roadUV']),
+        `WGSL-Bindings = u, heights, roadMask, erosionDelta, water, lakes, townMask, roadUV (ist ${binds.map(b => b.name).join(', ')})`);
 }
 
 // Encode-Puffer in main.js = UNIFORM_FLOATS (sonst verwirft das TypedArray die Orte still)
 check(/uniformsData\s*=\s*new Float32Array\(UNIFORM_FLOATS\)/.test(mainJs), 'main.js: uniformsData = new Float32Array(UNIFORM_FLOATS)');
 
-// Punkt-Packing vec4(x, y, level, 0): WGSL liest Level aus .z (→ .clinerules/wgsl.md)
+// Punkt-Packing vec4(x, y, level, Bogenlänge): WGSL liest Level aus .z, Bogenlänge aus .w (→ .clinerules/wgsl.md)
 {
     const nP = MAX_ROADS * ROAD_POINTS;
     const out = new Float32Array(UNIFORM_FLOATS);
@@ -110,13 +110,14 @@ check(/uniformsData\s*=\s*new Float32Array\(UNIFORM_FLOATS\)/.test(mainJs), 'mai
     const rivers = new Float32Array(4 * MAX_RIVERS * RIVER_POINTS).map((_, i) => 9000 + i);
     encodeUniforms({}, pts, lv, towns, rivers, out);
     check(out.subarray(RIVERS_OFFSET).every((v, i) => v === 9000 + i), `encodeUniforms packt rivers 1:1 ab Float ${RIVERS_OFFSET}`);
+    // Nachbarpunkte liegen je (2, 2) auseinander → Bogenlänge = Index in der Straße · √8, am Straßenanfang 0
     let ok = true;
     for (let k = 0; k < nP; k++) {
-        const o = ROADS_OFFSET + 4 * k;
-        if (out[o] !== pts[2 * k] || out[o + 1] !== pts[2 * k + 1] || out[o + 2] !== lv[k] || out[o + 3] !== 0) ok = false;
+        const o = ROADS_OFFSET + 4 * k, s = (k % ROAD_POINTS) * Math.SQRT2 * 2;
+        if (out[o] !== pts[2 * k] || out[o + 1] !== pts[2 * k + 1] || out[o + 2] !== lv[k] || Math.abs(out[o + 3] - s) > 1e-3) ok = false;
     }
-    check(ok, `encodeUniforms packt alle ${nP} Punkte als vec4(x, y, level, 0)`);
-    check(/roadL\s*=\s*mix\(a\.z,\s*b\.z/.test(wgsl), 'WGSL liest Road-Level aus roads[].z');
+    check(ok, `encodeUniforms packt alle ${nP} Punkte als vec4(x, y, level, Bogenlänge je Straße)`);
+    check(/roadL\s*=\s*mix\(a\.z,\s*b\.z/.test(wgsl) && /rS\[r\] = mix\(a\.w, b\.w/.test(wgsl), 'WGSL liest Road-Level aus roads[].z, Bogenlänge aus .w');
     let tOk = true;
     for (let k = 0; k < MAX_TOWNS; k++) {
         const o = TOWNS_OFFSET + 4 * k;
