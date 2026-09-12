@@ -13,6 +13,7 @@ import { hydrology, RIVER_WET } from './hydro.js';
 import { createErosion } from './erosion.js';
 import { createWalk } from './walk.js';
 import { createTerrainMaterial } from './material.js';
+import { BIOMES } from './biomes.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
 function noWebGPU(detail) {
@@ -38,9 +39,10 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
+// Farben von Hintergrund, Nebel und Licht setzt das Biom (applyMaterial)
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0e1116);
-scene.fog = new THREE.Fog(0x0e1116, 600, 1600);
+scene.background = new THREE.Color();
+scene.fog = new THREE.Fog(0, 600, 1600);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 4000);
 camera.position.set(240, 280, 240);
@@ -68,8 +70,9 @@ if (import.meta.env.DEV) window.dbg = { camera, controls, scene, get heights() {
     get params() { return params; }, get terrain128() { return terrain128; }, get water() { return water; }, get townMask() { return townMask; }, get maskTex() { return maskTex; } };
 
 // Sonne ≈ 30° hoch + schwächeres Himmelslicht → Relief auch bei flachen Hügeln lesbar
-scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x3a4a33, 0.7));
-const sun = new THREE.DirectionalLight(0xfff2dd, 2.8);
+const hemi = new THREE.HemisphereLight();
+scene.add(hemi);
+const sun = new THREE.DirectionalLight();
 sun.position.set(220, 150, 120);
 scene.add(sun);
 
@@ -122,6 +125,7 @@ const params = {
     erosionIterations: 300,
     screeAngle: 90, // ° Schuttwinkel der thermischen Erosion; 90 = aus, darunter werden Abrisskanten zu Schutthängen
     // Material (→ Plan/Texturierung.md): steuern 3D, Vorschau und Splatmap, ohne Regeneration; Defaults = frühere feste Werte
+    biome: 'temperate', // Schlüssel in BIOMES (→ Plan/Biome.md); fehlt in alten Saves/Links → Default = bisheriger Look
     rockSlope: 35,   // ° Fels ab
     rockBlend: 15,   // ° bis voll Fels
     snowHeight: 140, // m über waterLevel voll Schnee; Schutt und Fels-Zone darunter wandern mit
@@ -367,24 +371,29 @@ let pimg = pctx.createImageData(RES, RES);
 
 // Farbrampe (Wasser/Sand/Gras/Fels/Schnee/Straße) — geteilt von 2D-Preview und 3D-Mesh, damit beide bei gleichem Seed identisch bleiben.
 // In Metern über waterLevel, nicht relativ zu maxH (das ist automatisch → Farben würden je Preset wandern).
-// Höhen setzt applyMaterial() aus den Material-Reglern; dieselben Stufen nimmt das Auto-Material (material.js)
-const STOPS = [
-    [0, [194, 178, 128]],     // Sand (Ufer)
-    [1.5, [108, 146, 72]],    // Gras
-    [45, [72, 112, 54]],      // dunkles Grün
-    [85, [112, 104, 92]],     // Fels
-    [115, [150, 146, 138]],   // Schutt
-    [140, [240, 244, 248]],   // Schnee
-];
-const ROCK = [110, 102, 92];
+// Höhen setzt applyMaterial() aus den Material-Reglern, Farben aus dem Biom (BIOMES[].ramp: Ufer, Boden, Boden dunkel,
+// Fels-Zone, Schutt, oben); dieselben Stufen nimmt das Auto-Material (material.js)
+const STOPS = [[0], [1.5], [45], [85], [115], [140]];
+let bio = BIOMES.temperate; // Biom der Farbkarte (applyMaterial)
 const ROCK_SLOPE = [0.7, 1.2]; // Hangneigung m/m → Überblendung zu Fels (aus rockSlope / rockBlend)
 const ALPINE = 55; // m: Fels-Zone beginnt so weit unter der Schneegrenze (früher fest 85 bei Schnee 140)
 
-// Material-Regler → Farbrampe, Fels-Neigung und Auto-Material; Stufen streng steigend, sonst teilt die Rampe durch 0
+// Material-Regler + Biom → Farbrampe, Fels-Neigung, Stimmung und Auto-Material; Stufen streng steigend, sonst teilt die
+// Rampe durch 0
 function applyMaterial() {
     const p = params, h = [0, p.sandHeight, 45, p.snowHeight - ALPINE, p.snowHeight - p.snowBlend, p.snowHeight];
     for (let i = 1; i < h.length; i++) h[i] = Math.max(h[i], h[i - 1] + 0.01);
-    h.forEach((v, i) => { STOPS[i][0] = v; });
+    bio = BIOMES[p.biome];
+    h.forEach((v, i) => { STOPS[i] = [v, bio.ramp[i]]; });
+    scene.background.set(bio.sky);
+    scene.fog.color.set(bio.sky);
+    hemi.color.set(bio.hemi[0]);
+    hemi.groundColor.set(bio.hemi[1]);
+    hemi.intensity = bio.hemi[2];
+    sun.color.set(bio.sun[0]);
+    sun.intensity = bio.sun[1];
+    waterMat.color.set(bio.water.mesh);
+    if (p.biome !== texBiome) loadTextures();
     ROCK_SLOPE[0] = Math.tan(p.rockSlope * Math.PI / 180);
     ROCK_SLOPE[1] = Math.tan(Math.min(p.rockSlope + p.rockBlend, 89) * Math.PI / 180);
     autoMat.update({ sand: h[1], green: h[2], rockH: h[3], scree: h[4], snow: h[5], rockLo: ROCK_SLOPE[0], rockHi: ROCK_SLOPE[1],
@@ -419,10 +428,10 @@ const shoreOf = (h, wat, n, p = params) => {
 function terrainColor(out, o, hm, m, s, rel, W, S) {
     let r, g, b;
     if (hm < W) {
-        const t = hm / W;
-        r = 42 + 20 * t;
-        g = 90 + 28 * t;
-        b = 158 + 22 * t;
+        const t = hm / W, D = bio.water.deep, F = bio.water.shallow;
+        r = D[0] + (F[0] - D[0]) * t;
+        g = D[1] + (F[1] - D[1]) * t;
+        b = D[2] + (F[2] - D[2]) * t;
     } else {
         // Sand bis sandHeight Ufer-Abstand (Meer, See, Fluss) wie Splatmap und Textur; darüber die Rampe ab Meereshöhe.
         // Ohne See in der Nähe ist S = hm − waterLevel → dieselbe Rechnung wie vorher: Sand → Gras linear über STOPS[1]
@@ -442,10 +451,10 @@ function terrainColor(out, o, hm, m, s, rel, W, S) {
             g = S[1] + (g - S[1]) * shore;
             b = S[2] + (b - S[2]) * shore;
         }
-        const k = rockWeight(s);
-        r += (ROCK[0] - r) * k;
-        g += (ROCK[1] - g) * k;
-        b += (ROCK[2] - b) * k;
+        const k = rockWeight(s), R = bio.rock;
+        r += (R[0] - r) * k;
+        g += (R[1] - g) * k;
+        b += (R[2] - b) * k;
         const lit = 1 + Math.min(Math.max(rel * RELIEF_TINT, -0.15), 0.15);
         r *= lit;
         g *= lit;
@@ -516,9 +525,11 @@ function updateMaskTex() {
 const view = { textures: true, texSize: 2048 };
 const autoMat = createTerrainMaterial(terrainTex, maskTex, renderer.getMaxAnisotropy());
 const terrainMaterial = () => view.textures && autoMat.ready ? autoMat.mat : terrainMat;
+let texBiome = null; // Biom des zuletzt angeforderten Textur-Satzes (applyMaterial lädt bei Wechsel)
 async function loadTextures() {
+    texBiome = params.biome;
     try {
-        await autoMat.load(view.texSize);
+        await autoMat.load(view.texSize, texBiome);
         if (terrain) terrain.material = terrainMaterial();
     } catch (e) {
         console.error('Textures:', e.message);
@@ -573,7 +584,7 @@ function buildTerrainMesh() {
 // Wasserspiegel als eigenes Mesh (→ Plan/Fluesse.md): Vertex-Gitter wie das Terrain, y = Spiegel des Pixels; nur Dreiecke
 // mit mindestens einer nassen Ecke → trockenes Land wird nicht doppelt gezeichnet, unter dem Gelände verdeckt der Tiefentest.
 // vereinfacht: nicht im glTF-Export (nur Terrain)
-const waterMat = new THREE.MeshStandardMaterial({ color: 0x3d78b0, roughness: 0.2, metalness: 0, transparent: true, opacity: 0.78, vertexColors: true });
+const waterMat = new THREE.MeshStandardMaterial({ roughness: 0.2, metalness: 0, transparent: true, opacity: 0.78, vertexColors: true });
 const WATER_SINK = 0.05; // m unter dem Gelände für trockene Randecken
 let waterMesh = null;
 // Bei 1280 m sind das 1,6 Mio. Ecken → direkt in die Puffer schreiben (keine Array-Literale je Ecke/Viereck), Normale
@@ -684,13 +695,13 @@ const SAVE_KEYS = Object.keys(params).filter(k => k !== 'maxH');
 // 3: 0,5 m/px statt 0,39 → Routing-Raster und Pixel anders, Straßen weichen ab (→ Plan/Pixel05.md)
 const SAVE_VERSION = 3;
 // Fremde JSON (von Hand / aus der GUI kopiert): Schlüssel ohne Groß-/Kleinschreibung ("Seed"), Zahlen oft als
-// String → Typ vom Default erzwingen, sonst "45" + 10 = "4510" im Routing; Farbe mit '#'
+// String → Typ vom Default erzwingen, sonst "45" + 10 = "4510" im Routing; Farbe mit '#'; unbekanntes Biom fällt weg
 function pickParams(obj) {
     const src = Object.fromEntries(Object.entries(obj).map(([k, v]) => [k.toLowerCase(), v]));
     return Object.fromEntries(SAVE_KEYS.filter(k => k.toLowerCase() in src)
         .map(k => [k, src[k.toLowerCase()]])
-        .map(([k, v]) => [k, typeof params[k] === 'number' ? Number(v) : String(v).replace(/^#?/, '#')])
-        .filter(([, v]) => !Number.isNaN(v)));
+        .map(([k, v]) => [k, typeof params[k] === 'number' ? Number(v) : k === 'biome' ? String(v) : String(v).replace(/^#?/, '#')])
+        .filter(([k, v]) => !Number.isNaN(v) && (k !== 'biome' || Object.hasOwn(BIOMES, v))));
 }
 // jede JSON in app/presets/ = eigener Eintrag (Save-Format, → Plan/SaveLoad.md)
 const ALL_PRESETS = { Defaults: {}, ...PRESETS };
@@ -785,6 +796,13 @@ function refreshSizes() {
     panel.sizes(exportSizes(exp.target, N).map(n => [n, `${n} px · ${+cellSize(n, N).toFixed(3)} m`]), exportN(N));
 }
 
+// Material-Regler: Farben + Shader-Werte, keine Regeneration; Undo-Eintrag entprellt wie die Farbe
+function materialChanged() {
+    applyMaterial();
+    refreshView();
+    clearTimeout(colorTimer);
+    colorTimer = setTimeout(record, 400);
+}
 const panel = buildPanel(params, {
     change: scheduleGenerate,
     color: () => {
@@ -793,12 +811,13 @@ const panel = buildPanel(params, {
         clearTimeout(colorTimer);
         colorTimer = setTimeout(record, 400);
     },
-    // Material-Regler: Farben + Shader-Werte, keine Regeneration; Undo-Eintrag entprellt wie die Farbe
-    material: () => {
-        applyMaterial();
-        refreshView();
-        clearTimeout(colorTimer);
-        colorTimer = setTimeout(record, 400);
+    material: materialChanged,
+    // Biom-Wechsel setzt auch die Straßenfarbe des Bioms (danach frei wählbar, beides im Save)
+    biome: () => {
+        params.roadColor = BIOMES[params.biome].road;
+        setRoadColor();
+        panel.refresh();
+        materialChanged();
     },
     presets: Object.keys(ALL_PRESETS),
     preset: name => applyPreset(ALL_PRESETS[name]),
@@ -843,8 +862,7 @@ panel.guis.World.add(params, 'maxH').name('Max height (auto, m)').decimals(1).di
     s.domElement.title = 'Resolution of the ground textures: 1K needs a quarter of the GPU memory (~70 instead of ~270 MB). Not saved.';
     s.domElement.dataset.key = 'texSize';
 }
-applyMaterial();
-loadTextures();
+applyMaterial(); // lädt auch die Texturen des Bioms
 refreshSizes();
 
 function download(blob, name) {

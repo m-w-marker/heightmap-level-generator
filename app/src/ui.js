@@ -1,6 +1,7 @@
 // Panel: Toolbar + Tabs, je Tab ein lil-gui (→ Plan/UI.md). Hier nur Aufbau + Metadaten, Logik kommt als Callbacks.
 import { GUI } from 'lil-gui';
 import { MAX_TOWNS } from './roadgen.js';
+import { BIOMES } from './biomes.js';
 
 // Tab → Gruppe → [Schlüssel, Label, min, max, step, Tooltip]; Gruppe 'Advanced' startet zugeklappt.
 // Schlüssel = params/JSON-Name (unverändert → alte Saves laden weiter)
@@ -80,6 +81,10 @@ export const TABS = {
     },
     // ohne Regeneration (cb.material): Farben der Vorschau, Splatmap und Texturen; Ansicht (Textures, Größe) hängt main.js an
     Material: {
+        Biome: [
+            ['biome', 'Biome', Object.fromEntries(Object.entries(BIOMES).map(([k, b]) => [b.label, k])), 0, 0,
+                'Look of the whole world: ground textures, color map, water and light. Terrain and roads stay; switching also sets the road color.'],
+        ],
         'Rock & snow': [
             ['rockSlope', 'Rock from (°)', 15, 70, 1, 'Slopes steeper than this start to turn into rock.'],
             ['rockBlend', 'Rock blend (°)', 2, 40, 1, 'Extra steepness until the slope is fully rock.'],
@@ -157,7 +162,7 @@ export function seedGrid(size, count, current, draw, pick) {
     fill();
 }
 
-// cb: change(), color(), material(), presets: [Namen], preset(name), save(), load(), link(), walk(), compare(), exports: {Label: fn},
+// cb: change(), color(), material(), biome(), presets: [Namen], preset(name), save(), load(), link(), walk(), compare(), exports: {Label: fn},
 //     exportTargets: {key: Label}, exportTarget(key), exportDetail(1|2), exportSize(px), regenerate()
 // → { guis: {Tab: GUI}, refresh(), status(text), sizes(options, selected), busy(on) }
 export function buildPanel(params, cb) {
@@ -218,8 +223,9 @@ export function buildPanel(params, cb) {
             const f = gui.addFolder(group);
             if (group === 'Advanced') f.close();
             for (const [key, label, min, max, step, tip] of rows) {
-                const c = typeof params[key] === 'string'
-                    ? f.addColor(params, key).onChange(cb.color)
+                // min als Objekt {Label: Wert} = Auswahl; einzige ist das Biom
+                const c = typeof min === 'object' ? f.add(params, key, min).onChange(cb.biome)
+                    : typeof params[key] === 'string' ? f.addColor(params, key).onChange(cb.color)
                     : f.add(params, key, min, max, step).onChange(tab === 'Material' ? cb.material : cb.change);
                 c.name(label);
                 c.domElement.title = `${tip} (${key})`;
