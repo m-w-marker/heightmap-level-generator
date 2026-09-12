@@ -34,6 +34,10 @@ for (const axis of ['x', 'y']) {
     const want = axis === 'x' ? [-s, 0] : [0, -s];
     check(Math.abs(nx - want[0]) < 1e-5 && Math.abs(ny - want[1]) < 1e-5 && Math.abs(nz - Math.cos(30 * Math.PI / 180)) < 1e-5,
         `Rampe ${axis}: Normale (${nx.toFixed(3)}, ${ny.toFixed(3)}, ${nz.toFixed(3)})`);
+    // OpenGL („green up“): nur G gespiegelt → Anstieg nach unten ergibt G > 128, R und B wie DirectX
+    const dx = normalBytes(nrm), gl = normalBytes(nrm, true), o = 4 * k;
+    check(gl[o] === dx[o] && gl[o + 2] === dx[o + 2] && gl[o + 1] === Math.round((0.5 - 0.5 * ny) * 255) && (axis === 'x' || gl[o + 1] > 128),
+        `Rampe ${axis}: OpenGL-Normale G ${gl[o + 1]} (DirectX ${dx[o + 1]})`);
     // Krümmung einer Rampe = 0, wo das Mittelungsfenster ganz in der Map liegt
     const c = curvature(h, n, cell, maxH), r = Math.round(CURV_R / cell);
     let cMax = 0;
@@ -62,4 +66,4 @@ for (const sign of [1, -1]) {
 }
 
 if (fail) process.exit(1);
-console.log('Masken: OK — Ebene 0° / (128,128,255), Rampe 30° in x und y (DirectX-Normale), Krümmung Rampe 0, Kuppe hell, Mulde dunkel, Flow log/p99');
+console.log('Masken: OK — Ebene 0° / (128,128,255), Rampe 30° in x und y (DirectX-/OpenGL-Normale), Krümmung Rampe 0, Kuppe hell, Mulde dunkel, Flow log/p99');

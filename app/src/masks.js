@@ -70,12 +70,12 @@ const byte = v => Math.round(Math.min(Math.max(v, 0), 1) * 255);
 export const flowBytes = (f, scale) => Uint8Array.from(f, v => byte(Math.log1p(Math.max(v, 0)) / Math.log1p(scale)));
 export const slopeBytes = deg => Uint8Array.from(deg, d => byte(d / 90));
 export const curvatureBytes = (c, scale) => Uint8Array.from(c, v => byte(0.5 + v / (2 * scale)));
-// RGBA, A = 255 (encodePng kann Grau oder RGBA); rgb = n · 0.5 + 0.5
-export function normalBytes(nrm) {
-    const out = new Uint8Array(nrm.length / 3 * 4);
+// RGBA, A = 255 (encodePng kann Grau oder RGBA); rgb = n · 0.5 + 0.5; openGL: G gespiegelt („green up“, Unity/Godot/three)
+export function normalBytes(nrm, openGL = false) {
+    const out = new Uint8Array(nrm.length / 3 * 4), g = openGL ? -1 : 1;
     for (let i = 0, o = 0; i < nrm.length; i += 3, o += 4) {
         out[o] = byte(nrm[i] * 0.5 + 0.5);
-        out[o + 1] = byte(nrm[i + 1] * 0.5 + 0.5);
+        out[o + 1] = byte(g * nrm[i + 1] * 0.5 + 0.5);
         out[o + 2] = byte(nrm[i + 2] * 0.5 + 0.5);
         out[o + 3] = 255;
     }
