@@ -46,11 +46,22 @@ export heightmap, splatmap, masks, road and town layout and a 3D mesh for your e
   cliff, unavoidable climbs become ramps, consistent across the whole network
 - **Never under water**: roads avoid lakes and rivers and cross them on a raised embankment
 
+**Material**
+- **Ground textures in 3D**: grass, rock, gravel, sand, snow and road (CC0), placed automatically by slope, height, shore
+  and road like an auto-material; rock is projected from three sides, so cliffs don't stretch; detail normals catch the
+  light; far away the flat color map takes over
+- **Same rules everywhere**: rock angle, snow line and shore sand drive the 3D textures, the 2D map and the splatmap;
+  sand lines the shores of lakes and rivers too
+- **Your own textures**: replace `app/public/textures/<layer>/albedo.jpg` and `normal.jpg` (OpenGL normal map, any size);
+  sources and licenses in `app/public/textures/SOURCES.md`; `node tools/fetch-textures.mjs` (in `app/`) downloads the
+  originals again
+- *Textures* off shows the plain color map (lighter on weak GPUs); *Texture size* 1K needs a quarter of the GPU memory
+
 **Tool**
 - **2D map + 3D preview**: top-down color map and a lit 3D mesh (three.js) with the same colors
 - **Walk mode** (🚶): first-person at eye height on the terrain; mouse to look, WASD / arrows to move, Shift to run, Esc to leave
-- **Compact panel**: toolbar and three tabs (Terrain, Roads, World); labels with units, a tooltip per slider, rarely
-  used ones under *Advanced*
+- **Compact panel**: toolbar and four tabs (Terrain, Roads, World, Material); labels with units, a tooltip per slider,
+  rarely used ones under *Advanced*
 - **Undo / redo**: Ctrl+Z / Ctrl+Y over all settings
 - **Share link**: the URL always holds all settings; *Link* copies it, the same map opens in any WebGPU browser
 - **Presets**: Rolling hills, Pasture, Mountains, Canyon / Plateaus, Lakes, Eroded mountains, River valley, plus defaults
@@ -140,6 +151,12 @@ All distances are in meters (1 unit = 1 m), coverages and river catchment in % o
 | | Water & ground | `waterLevel`, `baseLevel`, `maxH` (auto) |
 | | Rivers & lakes | `riverCatchment`, `riverWidth`, `lakeArea` |
 | | Border ring | `rimAmp`, `rimZone`, *`rimWave`* |
+| Material | Rock & snow | `rockSlope`, `rockBlend`, `snowHeight`, `snowBlend` |
+| | Ground | `sandHeight`, `gravelCurv` |
+| | Textures | `texScale`, `texFade`, `texTint` |
+| | View | *Textures* on/off, *Texture size* 1K / 2K (not saved) |
+
+Material settings change only the colors and textures; they don't regenerate the map.
 
 ## How it works
 
@@ -147,7 +164,8 @@ Seed + parameters → optional erosion on a half-resolution GPU grid (`erosion.w
 rivers and lakes on the CPU (`hydro.js`: priority flood, drainage, river courses) → road network on the CPU
 (`roadgen.js`: towns, spanning tree, Dijkstra routing, grade-limited road levels above the water) → uniform buffer →
 compute shader (`heightmap.wgsl`) → height, road mask, water level and town mask buffers → readback → 2D canvas preview,
-3D terrain mesh and water surface.
+3D terrain mesh and water surface. The 3D material (`material.js`, three.js TSL node material) blends the texture layers
+per pixel from a mask texture (slope, curvature, road, distance to the shore) and fades into the color map with distance.
 
 ## Tech
 
