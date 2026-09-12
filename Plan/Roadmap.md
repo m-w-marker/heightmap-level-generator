@@ -89,6 +89,7 @@ headless: von oben keine Kreise mehr (auch Radius 15 im Berg-Terrain), Kern-Span
   Mäander, Bergseen, echter 3D-Wasserspiegel, Straßen nie unter Wasser, aus = bitgleich; Preset „River valley“) — geprüft am 2026-09-12
 - [x] R17 Map-Größe (Detailplan `Plan/erledigt/MapGroesse.md`: Regler 200–1000 m, Auflösungen fest, 400 m bitgleich,
   roadgen-/hydro-Test bei 400 + 800 m, Fahrbahn- und Flussbreite in m gleich) — geprüft am 2026-09-12
-- [ ] R18 README — geprüft am
+- [ ] R18 README — Feature-Liste, Parameter-Tabelle, Pipeline auf Stand R17 (2026-09-12); offen: neuer Screenshot
+  (liefert User → `docs/generator.png`), Pages-Link (nach `Plan/GitHubPages.md` P2–P5), Rendern auf GitHub (nach Push)
 
 <!-- fertig: git mv Plan/<Datei>.md Plan/erledigt/ -->
