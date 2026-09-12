@@ -85,7 +85,8 @@ headless: von oben keine Kreise mehr (auch Radius 15 im Berg-Terrain), Kern-Span
   identisch) — geprüft am 2026-09-12
 - [x] R15 Erosion + Flow-Map (Detailplan `Plan/erledigt/Erosion.md`: Rohr-Modell + thermisch auf festem 512-Gitter, delta
   additiv, aus = bitgleich; +24 ms bei 300 Iterationen; Preset „Eroded mountains“; Flow-Map-Export log/p99) — geprüft am 2026-09-12
-- [ ] R16 Flüsse/Seen — geprüft am
+- [x] R16 Flüsse/Seen (Detailplan `Plan/erledigt/Fluesse.md`: Priority-Flood auf dem Prepass, Flüsse als Polylinien mit
+  Mäander, Bergseen, echter 3D-Wasserspiegel, Straßen nie unter Wasser, aus = bitgleich; Preset „River valley“) — geprüft am 2026-09-12
 - [ ] R17 Map-Größe — geprüft am
 - [ ] R18 README — geprüft am
 

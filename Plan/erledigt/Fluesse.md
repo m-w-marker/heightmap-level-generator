@@ -1,6 +1,6 @@
 # Plan: Flüsse und Seen (R16)
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-12
 
 ## Ziel
@@ -71,6 +71,6 @@ Wasserspiegel; 2D-Vorschau, Splatmap (Kanal B) und Straßen kennen das neue Wass
   `RAISE_MAX` 6 m, kein See-/Flusswasser auf der Fahrbahn; headless 7 Presets: Fahrbahn 0 Pixel unter Wasser, Level 0
   Ausreißer; Rest: Mountains + Erosion 40 % 19 von 36 000 Fahrbahnpixeln mit höherem Wasser ≤ 3 px daneben; Seed-Vergleich
   Ø 0,66/255, Straßen 100 %; Regeneration ~270 ms statt ~150) — geprüft am 2026-09-12
-- [ ] F6 Doku — geprüft am
+- [x] F6 Doku (`.clinerules/hydro.md` neu, `strassen.md` Wasser-Boden/RAISE_MAX/Nachklemmen, `wgsl.md` Layout + Bindings) — geprüft am 2026-09-12
 
 <!-- fertig: git mv Plan/<Datei>.md Plan/erledigt/ -->

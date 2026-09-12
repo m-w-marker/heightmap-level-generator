@@ -35,8 +35,10 @@ paths:
 2. Offset von Mitglied i+1 = `roundUp(Ende von i, Align(i+1))`.
 3. Nach einem Struct-Mitglied S liegt das nächste bei `≥ roundUp(16, Größe(S))`. naga rundet hier nicht auf, sondern meldet einen Fehler.
 
-Aktuell: `Params` = 28 × f32 = 112 B → `roads` ab Byte 112 = Float-Index 28; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0);
+Aktuell: `Params` = 30 × f32 = 120 B → `roads` ab Byte 128 = Float-Index 32; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0);
 `towns` = `MAX_TOWNS` vec4 (x, y, level m, 0) direkt dahinter (`TOWNS_OFFSET`), Puffer = `UNIFORM_FLOATS`. Layout-Test `tests/uniforms.layout.mjs`.
+`rivers` = `MAX_RIVERS × RIVER_POINTS` vec4 (x, y, Spiegel m, halbe Breite m) hinter `towns` (`RIVERS_OFFSET`); Uniform ≤ 64 KiB.
+Bindings: 3 `erosionDelta` (EROSION_RES²), 4 `water` (res², 0 = Meer), 5 `lakes` (`LAKE_RES` = `PRE`²) (→ `.clinerules/hydro.md`).
 Erosion: `struct E` = `EROSION_FIELDS` (nur f32), Puffer `EROSION_FLOATS` = auf 16 B aufgerundet; Gitter `EROSION_RES` in uniforms.js, heightmap.wgsl und erosion.wgsl (`N`) gleich.
 
 ## Symptome
