@@ -7,7 +7,7 @@ export const RIVER_POINTS = 32; // = RIVER_POINTS in heightmap.wgsl
 export const RIVER_WET = 1;     // m: Wasser reicht über das Bett hinaus (= RIVER_WET in heightmap.wgsl)
 const RIVER_MIN_W = 1.5;        // m Breite an der Quelle
 const LAKE_MIN_DEPTH = 0.3;     // m: flachere Senken bleiben trocken
-const MIN_RIVER_CELLS = 4;      // kürzere Zuflüsse weglassen
+const MIN_RIVER_CELLS = 8;      // kürzere Zuflüsse weglassen (~25 m; 4 ließ gerade Stummel stehen)
 const NB8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
 
 // Abstand Punkt → Segment + Parameter t
@@ -19,14 +19,15 @@ function segDist(px, py, ax, ay, bx, by) {
 
 // Mäander quer zum Lauf: D8-Pfade auf 128² kennen nur 8 Richtungen → Flachlandflüsse wirkten wie Kanäle. Zwei Sinus mit
 // inkommensurablen Wellenlängen (~12× Breite) → nicht periodisch; Amplitude ≤ Breite, an Quelle und Mündung 0, bei mittlerem
-// Gefälle ≥ MEANDER_GRADE gerade (Bergbach). p = RIVER_POINTS × vec4(x, y, Spiegel, halbe Breite), k = Phase je Fluss
-const MEANDER_GRADE = 0.1;
+// Gefälle ≥ MEANDER_GRADE nur MEANDER_STEEP davon (Bergbach windet sich wenig, schnurgerade wirkt gestanzt).
+// p = RIVER_POINTS × vec4(x, y, Spiegel, halbe Breite), k = Phase je Fluss
+const MEANDER_GRADE = 0.1, MEANDER_STEEP = 0.3;
 function meander(p, k) {
     const n = RIVER_POINTS, len = [0];
     for (let i = 1; i < n; i++) len.push(len[i - 1] + Math.hypot(p[4 * i] - p[4 * i - 4], p[4 * i + 1] - p[4 * i - 3]));
     const L = len[n - 1];
     if (L < 1e-6) return;
-    const flat = Math.max(1 - (p[2] - p[4 * n - 2]) / L / MEANDER_GRADE, 0);
+    const flat = Math.max(1 - (p[2] - p[4 * n - 2]) / L / MEANDER_GRADE, MEANDER_STEEP);
     const off = [];
     for (let i = 0; i < n; i++) {
         const a = Math.max(i - 1, 0), b = Math.min(i + 1, n - 1);

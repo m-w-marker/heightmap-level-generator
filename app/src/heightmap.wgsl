@@ -313,7 +313,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     heights[idx] = clamp(h / u.params.maxH, 0.0, 1.0);
     // See/Fluss nur, wo das Gelände vor den Straßen unter dem Spiegel lag und die Straße es nicht abgesenkt hat → ein
-    // Straßeneinschnitt am See läuft nicht voll (→ RAISE_MAX in roadgen.js). 0 = Meer: JS nimmt dann waterLevel exakt (f32 ≠ f64)
-    water[idx] = select(0.0, wl, wl > u.params.waterLevel && hPre < wl && h >= hPre - 0.01);
+    // Straßeneinschnitt am See läuft nicht voll (→ RAISE_MAX in roadgen.js); nie auf der Fahrbahn (Damm/Durchlass, fängt
+    // Rampen am Ufer ab, die limitGrade durch den Spiegel legt). 0 = Meer: JS nimmt dann waterLevel exakt (f32 ≠ f64)
+    let lane = dMin < u.params.roadHalfWidth + 0.5; // = roadMask ≥ 0.5
+    water[idx] = select(0.0, wl, wl > u.params.waterLevel && hPre < wl && h >= hPre - 0.01 && !(nRoads > 0u && lane));
     roadMask[idx] = 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + 1.0, dMin); // nur Fahrbahn (Farbe)
 }

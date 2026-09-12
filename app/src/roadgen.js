@@ -11,7 +11,8 @@ const BAND_WIDTH = 12; // m neben einer Straße: teuer → spätere Straßen mü
 const BAND_AVOID = 3;  // Zusatzkosten pro m im Band
 const PATH_SMOOTH = 3; // Zellen Halbfenster gleitender Mittelwert (16-Nachbar-Pfad → Kurven statt Knicke)
 const GRADE_COST = 2;  // × len × (Steigung / roadMaxGrade − 1)² über dem Maximum (→ Plan/StrassenSteigung.md)
-const RAISE_MAX = 3;   // m: Straße bis so weit unter einem See-/Fluss-Spiegel wird darüber gehoben, tiefer = Einschnitt (→ Plan/Fluesse.md)
+const RAISE_MAX = 6;   // m: Straße bis so weit unter einem See-/Fluss-Spiegel wird darüber gehoben, tiefer = Einschnitt (→ Plan/Fluesse.md);
+                       // 3 m ließ limitGrade-Rampen am Seeufer durch den Spiegel laufen
 
 // Deterministischer PRNG: gleicher Seed → gleiche Straßen
 function mulberry32(seed) {
@@ -187,8 +188,9 @@ export function generateRoads(seed, mapSize, terrain, opts) {
         const res = resample(chaikin(smoothPath(pts, PATH_SMOOTH), 2), ROAD_POINTS);
         points.set(res, r * ROAD_POINTS * 2);
         // Level nie unter Wasser: auch der tiefste Punkt des Toleranzbands (Level − roadTolerance) bleibt trocken.
-        // Wasser entlang der halben Segmente zu beiden Nachbarn (Schritt ≤ 1 Zelle, Umkreis halbe Fahrbahn) → eine
-        // Flusskreuzung zwischen zwei Punkten hebt beide, ein See 10 m neben einem Einschnitt nicht
+        // Wasser entlang der ganzen Segmente zu beiden Nachbarn (Schritt ≤ 1 Zelle, Umkreis halbe Fahrbahn) → beide Enden
+        // eines nassen Segments heben sich, sonst senkt die Interpolation zum Nachbarn die Fahrbahn über dem Wasser wieder ab;
+        // ein See 10 m neben einem Einschnitt hebt nicht
         for (let i = 0; i < ROAD_POINTS; i++) {
             const k = r * ROAD_POINTS + i;
             const l = sampleTerrain(levelField, mapSize, res[2 * i], res[2 * i + 1]) + opts.roadOffset;
@@ -197,9 +199,9 @@ export function generateRoads(seed, mapSize, terrain, opts) {
             let w = water(res[2 * i], res[2 * i + 1], opts.roadWidth / 2);
             for (const j of [i - 1, i + 1]) {
                 if (j < 0 || j >= ROAD_POINTS) continue;
-                const dx = res[2 * j] - res[2 * i], dy = res[2 * j + 1] - res[2 * i + 1], steps = Math.ceil(Math.hypot(dx, dy) / 2 / cs);
+                const dx = res[2 * j] - res[2 * i], dy = res[2 * j + 1] - res[2 * i + 1], steps = Math.ceil(Math.hypot(dx, dy) / cs);
                 for (let s = 1; s <= steps; s++)
-                    w = Math.max(w, water(res[2 * i] + dx * s / steps / 2, res[2 * i + 1] + dy * s / steps / 2, opts.roadWidth / 2));
+                    w = Math.max(w, water(res[2 * i] + dx * s / steps, res[2 * i + 1] + dy * s / steps, opts.roadWidth / 2));
             }
             wk[k] = w;
             if (l > w - RAISE_MAX) levels[k] = Math.max(levels[k], w + opts.roadTolerance + 0.3);

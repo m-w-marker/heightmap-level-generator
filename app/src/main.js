@@ -554,6 +554,8 @@ const PRESETS = {
 };
 // Schuttwinkel 65°: kappt die 1-Zellen-Grate starker Erosion, Abrisskanten bleiben steil (→ Plan/Erosion.md)
 PRESETS['Eroded mountains'] = { ...PRESETS.Mountains, erosionStrength: 70, erosionIterations: 400, screeAngle: 65 };
+// Flüsse folgen den Erosionsrinnen (→ Plan/Fluesse.md)
+PRESETS['River valley'] = { ...PRESETS['Rolling hills'], erosionStrength: 40, riverCatchment: 1.5, riverWidth: 7 };
 function applyPreset(overrides) {
     Object.assign(params, DEFAULTS, overrides);
     setRoadColor();

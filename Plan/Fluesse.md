@@ -66,7 +66,11 @@ Wasserspiegel; 2D-Vorschau, Splatmap (Kanal B) und Straßen kennen das neue Wass
   Randecken knapp unter dem Gelände, Alpha nach Tiefe 0–0,4 m → Ufer ohne Zickzack; Fluss-Spiegel im Shader 0,4 m unter dem
   128²-Spiegel (`RIVER_SINK`) → Wasser bleibt im Bett; Mäander quer zum Lauf bis 1× Breite, bei Gefälle ≥ 10 % gerade;
   headless fern + nah Lakes / Defaults / Rolling hills / Mountains, Kriterien aus F3 weiter 0) — geprüft am 2026-09-12
-- [ ] F5 Tuning + Preset — geprüft am
+- [x] F5 Tuning + Preset „River valley“ (Rolling hills + Erosion 40 % + Flüsse 1,5 % / 7 m; Läufe ab 8 Zellen, Mäander bei
+  Gefälle noch 30 %; Erosion + Flüsse zeigte Rampen am Seeufer unter dem Spiegel → Wasser-Boden über ganze Segmente,
+  `RAISE_MAX` 6 m, kein See-/Flusswasser auf der Fahrbahn; headless 7 Presets: Fahrbahn 0 Pixel unter Wasser, Level 0
+  Ausreißer; Rest: Mountains + Erosion 40 % 19 von 36 000 Fahrbahnpixeln mit höherem Wasser ≤ 3 px daneben; Seed-Vergleich
+  Ø 0,66/255, Straßen 100 %; Regeneration ~270 ms statt ~150) — geprüft am 2026-09-12
 - [ ] F6 Doku — geprüft am
 
 <!-- fertig: git mv Plan/<Datei>.md Plan/erledigt/ -->
