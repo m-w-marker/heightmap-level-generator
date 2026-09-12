@@ -69,7 +69,7 @@ check(/uniformsData\s*=\s*new Float32Array\(UNIFORM_FLOATS\)/.test(mainJs), 'mai
         if (out[o] !== 5000 + k || out[o + 1] !== 6000 + k || out[o + 2] !== 7000 + k || out[o + 3] !== 0) tOk = false;
     }
     check(tOk, `encodeUniforms packt ${MAX_TOWNS} Orte als vec4(x, y, level, 0) ab Float ${TOWNS_OFFSET}`);
-    check(/clamp\(h,\s*c\.z - e,\s*c\.z \+ e\)/.test(wgsl) && /length\(w - c\.xy\)/.test(wgsl), 'WGSL liest Ort aus towns[].xy / .z');
+    check(/h = c\.z \+ e \* tanh\(clamp\(\(h - c\.z\) \/ e/.test(wgsl) && /length\(w - c\.xy\)/.test(wgsl), 'WGSL liest Ort aus towns[].xy / .z');
 }
 
 if (fail) {

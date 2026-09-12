@@ -41,6 +41,9 @@ const SLOPE_MIN = 0.1745;    // 10° in rad
 const SLOPE_MAX = 1.0472;    // 60° in rad (steiler → senkrechte Streifenwände im 512²-Mesh)
 const BANK_CURVE = 10.0;     // m: Böschungsneigung (tan) wächst je BANK_CURVE m Abstand um 1 (→ Plan/Boeschung.md)
 const CLEARING_BANK = 0.268; // tan 15°: Lichtungsrand startet flacher als die Straßen-Böschung → keine Gruben am Hang
+const CLEARING_WOBBLE = 0.5; // Radius ±50 % per Noise → unregelmäßiger Umriss statt Kreis
+const CLEARING_WAVE = 9.0;   // m Wellenlänge des Umriss-Noise (≈ Radius → 2–4 Ausbuchtungen je Lichtung)
+const CLEARING_KEEP = 0.5;   // m Restwelligkeit im Kern → nicht spiegelglatt
 
 // Punkt / Ort = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
@@ -166,15 +169,18 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let vary = min(u.params.roadSlopeVar, min(ang0 - SLOPE_MIN, SLOPE_MAX - ang0));
     let s0 = tan(ang0 + vary * vnoise(w / SLOPE_VAR_WAVE, layerKey(6u)));
 
-    // 3b) Lichtungen: Ort flach auf dem Level seiner Straßen-Enden, Rand als Kegel wie die Böschung (keine feste Breite →
-    // keine Wände am Hang), aber flach ab CLEARING_BANK → läuft aus statt Grube; vor Rand-Ring (bleibt geschlossen) und
-    // Straßen (gewinnen weiter) (→ Plan/Roadmap.md R12)
+    // 3b) Lichtungen: Gelände um den Ort zum Level seiner Straßen-Enden gezogen; erlaubte Abweichung e wächst wie eine
+    // Böschung (keine feste Breite → keine Wände am Hang), ab CLEARING_BANK flach → läuft aus statt Grube.
+    // Organisch statt Kreis: Radius per Noise ±CLEARING_WOBBLE, innen bleiben ±CLEARING_KEEP m Wellen, weiche Sättigung
+    // e·tanh(Δ/e) statt clamp → kein Knick am Rand. Vor Rand-Ring (bleibt geschlossen) und Straßen (gewinnen weiter)
+    // (→ Plan/Roadmap.md R12)
     let cr = u.params.clearingRadius;
     let nTowns = select(0u, min(u32(u.params.clearingCount), MAX_TOWNS), cr > 0.0); // Radius 0 = aus
+    let wobble = 1.0 + CLEARING_WOBBLE * vnoise(w / CLEARING_WAVE, layerKey(7u));
     for (var t = 0u; t < nTowns; t = t + 1u) {
         let c = u.towns[t];
-        let e = bank(max(length(w - c.xy) - cr, 0.0), CLEARING_BANK);
-        h = clamp(h, c.z - e, c.z + e);
+        let e = CLEARING_KEEP + bank(max(length(w - c.xy) - cr * wobble, 0.0), CLEARING_BANK);
+        h = c.z + e * tanh(clamp((h - c.z) / e, -10.0, 10.0)); // clamp: tanh großer Argumente → exp-Überlauf (NaN) je GPU
     }
 
     // 4) Straßen: nächstes Segment liefert Distanz + Level (linear zwischen den Endpunkten) (→ .clinerules/wgsl.md)
