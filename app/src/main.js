@@ -400,6 +400,7 @@ async function runGenerate() {
     if (genBusy) { genDirty = true; return; }
     genBusy = true;
     panel.busy(true);
+    record();
     try {
         await generate();
     } catch (e) {
@@ -452,9 +453,42 @@ const FILE_PRESETS = import.meta.glob('../presets/*.json', { eager: true, import
 for (const [path, p] of Object.entries(FILE_PRESETS))
     ALL_PRESETS[path.slice(path.lastIndexOf('/') + 1, -'.json'.length)] = pickParams(p);
 
+// Undo/Redo: Snapshots von pickParams, ein Eintrag je Regeneration (Slider-Drag = einer), Farbe entprellt
+const HISTORY_MAX = 100;
+const undoStack = [];
+let undoPos = -1;
+let colorTimer = 0;
+function record() {
+    const s = JSON.stringify(pickParams(params));
+    if (s === undoStack[undoPos]) return;
+    undoStack.splice(undoPos + 1, Infinity, s);
+    if (undoStack.length > HISTORY_MAX) undoStack.shift();
+    undoPos = undoStack.length - 1;
+}
+function undoRedo(step) {
+    record(); // noch nicht erfasste Änderung (entprellte Farbe) zuerst sichern, sonst springt Undo über sie
+    const p = undoPos + step;
+    if (p < 0 || p >= undoStack.length) return;
+    undoPos = p;
+    applyPreset(JSON.parse(undoStack[p])); // → runGenerate → record() findet denselben Stand, kein neuer Eintrag
+}
+window.addEventListener('keydown', e => {
+    if (!e.ctrlKey || e.target.tagName === 'INPUT') return; // in Eingabefeldern bleibt das Text-Undo des Browsers
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) undoRedo(-1);
+    else if (k === 'y' || (k === 'z' && e.shiftKey)) undoRedo(1);
+    else return;
+    e.preventDefault();
+});
+
 const panel = buildPanel(params, {
     change: scheduleGenerate,
-    color: () => { setRoadColor(); refreshView(); },
+    color: () => {
+        setRoadColor();
+        refreshView();
+        clearTimeout(colorTimer);
+        colorTimer = setTimeout(record, 400);
+    },
     presets: Object.keys(ALL_PRESETS),
     preset: name => applyPreset(ALL_PRESETS[name]),
     save: saveSettings,
