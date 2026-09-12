@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildPanel } from './ui.js';
 import { encodePng } from './png.js';
 import { quantize16, encodeR16, sampleBilinear, resample } from './export.js';
@@ -521,6 +522,7 @@ const panel = buildPanel(params, {
         'Normal map PNG': () => exportMask('normal'),
         'Curvature mask PNG': () => exportMask('curvature'),
         'Metadata JSON': exportMeta,
+        '3D mesh glTF (.glb)': exportGlb,
         'Heightmap PNG (8-bit preview)': exportPng,
     },
     regenerate: runGenerate,
@@ -635,6 +637,13 @@ async function exportMask(kind) {
         px = kind === 'slope' ? slopeBytes(slopeDeg(g)) : normalBytes(normals(g));
     }
     download(await encodePng(n, n, px, kind === 'normal' ? 4 : 1, 8), `${kind}-${params.seed}-${n}.png`);
+}
+
+// Das angezeigte Mesh (TN², 1 Unit = 1 m, Mitte im Ursprung) + Farbtextur eingebettet (→ .clinerules/export.md).
+// vereinfacht: immer TN² statt Export-Größe – 2049² wären ~250 MB Puffer im Browser
+async function exportGlb() {
+    const glb = await new GLTFExporter().parseAsync(terrain, { binary: true });
+    download(new Blob([glb], { type: 'model/gltf-binary' }), `terrain-${params.seed}.glb`);
 }
 
 // Maßstab + Konvention für die Engine, dazu alle Einstellungen (Save-Format) → reproduzierbar

@@ -8,7 +8,7 @@ paths:
   - "app/src/masks.js"
   - "app/tests/masks.test.mjs"
 ---
-# Thema: Export (PNG, Splatmap, Metadaten)
+# Thema: Export (PNG, Splatmap, Metadaten, glTF)
 
 ## No-Gos
 - NICHT Masken mit Alpha-Kanal über Canvas (`toBlob`/`putImageData`) exportieren, sondern über `encodePng`. Canvas multipliziert Alpha vor → RGB unter A = 0 (z. B. Straße) geht verloren. 16 Bit kann Canvas gar nicht.
@@ -18,3 +18,4 @@ paths:
 - NICHT die Normal Map in OpenGL-Konvention (Blender, three.js) ohne G-Flip nutzen. Export ist DirectX/Unreal („green down“, G = +Zeile).
 - NICHT die Krümmung mit fester Meter-Skala auf 8 Bit bringen, sondern mit `curvatureScale` (p99 je Map, steht in den Metadaten). Presets liegen zwischen ±0,8 m und ±16 m.
 - NICHT den 8-Bit-Export als Engine-Heightmap anbieten. Bei maxH 275 m ist eine Stufe 1,1 m hoch.
+- NICHT das glTF-Mesh in der Export-Größe bauen, sondern das angezeigte TN²-Mesh exportieren (1 Unit = 1 m, Mitte im Ursprung, +Y oben). 2049² wären ~250 MB Puffer im Browser; für Engines ist die Heightmap der Weg.
