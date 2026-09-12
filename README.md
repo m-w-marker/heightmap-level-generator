@@ -27,7 +27,8 @@ heightmap, masks and mesh for your engine.
 
 **Roads**
 - **Road network**: towns on flat, dry ground plus map exits, connected by a spanning tree with extra loops (only
-  where they are a real shortcut); routed around steep slopes and water, later roads merge into existing ones
+  where they are a real shortcut); routed around steep slopes and water, later roads merge into existing ones;
+  *Towns* = 0 turns roads off
 - **Lies on the landscape**: the road follows the terrain within a tolerance band; cuts and banks only where the
   terrain demands it, with varying steepness; towns sit on organic flat clearings
 - **Grade limit**: `roadMaxGrade` caps how steep a road may climb; routing looks for gaps instead of driving down a

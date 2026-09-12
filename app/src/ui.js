@@ -35,7 +35,7 @@ export const TABS = {
     Roads: {
         // Maxima so, dass MST + Zusatz + Ausfahrten ≤ MAX_ROADS: (MAX_TOWNS − 1) + 4 + 4 = 15
         'Road network': [
-            ['townCount', 'Towns', 1, MAX_TOWNS, 1, 'Flat, dry spots that get connected by roads.'],
+            ['townCount', 'Towns', 0, MAX_TOWNS, 1, 'Flat, dry spots that get connected by roads. 0 = no roads.'],
             ['clearingRadius', 'Town clearing (m)', 0, 40, 1, 'Radius of the flat ground around each town, on the level of its roads; edges like the road banks. 0 = off.'],
             ['exitCount', 'Map exits', 0, 4, 1, 'Roads that leave the map at the foot of the border ring.'],
             ['extraLinks', 'Loops', 0, 4, 1, 'Extra shortcuts between towns, only where the way round is long.'],

@@ -99,6 +99,9 @@ const bumpRes = generateRoads(seed, mapSize, bumpTerrain(), opts);
     check(worst < opts.roadTolerance, `Orts-Level vs. Straßen-Enden max Δ ${worst.toFixed(2)} m < roadTolerance`);
     const lone = generateRoads(seed, mapSize, flatTerrain(), { ...opts, townCount: 1, exitCount: 0 });
     check(lone.count === 0 && lone.towns.length === 1 && Math.abs(lone.towns[0].level - 32) < 0.01, 'einzelner Ort ohne Straße: Level 30 m + 2 m Offset');
+    // Towns 0 = Straßen aus: auch Ausfahrten bekommen keine Straße, keine Lichtungen
+    const none = generateRoads(seed, mapSize, flatTerrain(), { ...opts, townCount: 0, exitCount: 4 });
+    check(none.count === 0 && none.towns.length === 0 && none.points.every(v => v === 0), `Towns 0: ${none.count} Straßen, ${none.towns.length} Orte`);
 }
 
 // Kein Parallelband: Punkte 3–15 m neben einer fremden Straße, deren Abstand dabei gleich bleibt

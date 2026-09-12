@@ -44,7 +44,7 @@ export const TARGETS = {
     unreal: { label: 'Unreal', normal: 'directx', flip: false },
     unity: { label: 'Unity', normal: 'opengl', flip: true },
     godot: { label: 'Godot (Terrain3D)', normal: 'opengl', flip: false },
-    web: { label: 'Web / three.js', normal: 'opengl', flip: false },
+    web: { label: 'Web (WebGPU / three.js)', normal: 'opengl', flip: false }, // glTF-Konvention
 };
 const UE_SIZES = [505, 1009, 2017, 4033, 8129]; // Unreal-Empfehlung: ganze Komponenten
 const UNITY_SIZES = [513, 1025, 2049, 4097];    // Unity nimmt nur 2ⁿ+1, höchstens 4097
