@@ -1,2 +1,7 @@
 node_modules/
 dist/
+
+# nur lokal (Regeln, Pläne, Agent-Anweisungen)
+.clinerules/
+Plan/
+CLAUDE.md
