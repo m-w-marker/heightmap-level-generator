@@ -50,7 +50,7 @@ R18 README (ganz am Ende)
 ### Stufe 2 – mittel
 9. R9 Splatmap-Farben im 3D-Mesh (Straße/Fels/Wasser/Gras, gleiche Rampe wie Export) → Prüfung: Screenshot headless, Straßen im 3D erkennbar
 10. R10 Mesh-Export glTF (`GLTFExporter`, mit Farben aus R9, Maßstab 1 Unit = 1 m) → Prüfung: Datei lädt in three/Blender, Maße 400 m
-11. R11 Texturierung im Tool (Auto-Material): CC0-Texturen Gras/Fels/Kies/Sand/Schnee/Straße, Schichten über Masken aus R8 (Neigung, Höhe, Krümmung), Triplanar für steile Hänge, Detail-Normals; je Schicht Regler (z. B. „Fels ab °“, „Schnee ab m“) → Prüfung: Screenshots headless nah + fern, keine Streckung an Klippen, Framerate ok. Detailplan: `Plan/Texturierung.md` (wartet auf Freigabe)
+11. R11 Texturierung im Tool (Auto-Material): CC0-Texturen Gras/Fels/Kies/Sand/Schnee/Straße, Schichten über Masken aus R8 (Neigung, Höhe, Krümmung), Triplanar für steile Hänge, Detail-Normals; je Schicht Regler (z. B. „Fels ab °“, „Schnee ab m“) → Prüfung: Screenshots headless nah + fern, keine Streckung an Klippen, Framerate ok. Detailplan: `Plan/Texturierung.md` (freigegeben)
 12. R12 Orte als flache Lichtungen (Radius + Übergang, Straßen gewinnen weiter) → Uniform-Layout-Test anpassen → Prüfung: `uniforms.layout` grün, Lichtungen sichtbar
 13. R13 Seed-Vergleich: N Vorschauen aus dem 128²-Prepass, Klick übernimmt Seed → Prüfung: Vorschau entspricht der großen Map
 14. R14 Walk-Modus (Pointer-Lock, Augenhöhe 1,7 m aus Heightmap, ESC zurück) → Prüfung: laufen auf der Straße ohne Einsinken

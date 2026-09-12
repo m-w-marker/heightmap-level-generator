@@ -1,6 +1,7 @@
 # Plan: Texturierung im Tool (Auto-Material, R11)
 
-**Status:** offen (wartet auf Freigabe der offenen Entscheidungen)
+**Status:** freigegeben (2026-09-12: User „wir ziehn alles durch“ → alle Vorschläge unten angenommen: JPG 1K, Regler steuern
+auch 2D + Splatmap, Texturen im Repo, Kandidaten-Spalte 1)
 **Datum:** 2026-09-12
 
 ## Ziel
