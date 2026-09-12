@@ -83,7 +83,7 @@ function menu(id, placeholder, items, pick) {
     return s;
 }
 
-// cb: change(), color(), presets: [Namen], preset(name), save(), load(), exports: {Label: fn}, regenerate()
+// cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), exports: {Label: fn}, regenerate()
 // → { guis: {Tab: GUI}, refresh(), status(text), busy(on) }
 export function buildPanel(params, cb) {
     const seed = el('input', { id: 'seed', type: 'number', min: 1, max: 99999, step: 1, value: params.seed, title: 'Seed (seed)' });
@@ -103,11 +103,21 @@ export function buildPanel(params, cb) {
         cb.change();
     });
     const regen = button('↻', 'Regenerate', cb.regenerate);
+    const link = button('Link', 'Copy a link with all settings (same map in any browser)', async () => {
+        try {
+            await cb.link();
+            link.textContent = '✓';
+        } catch (e) {
+            console.error('Link:', e.message);
+            link.textContent = '✗';
+        }
+        setTimeout(() => { link.textContent = 'Link'; }, 1200);
+    });
     const status = el('div', { id: 'status', className: 'row', title: 'Last generation: GPU passes incl. readback, road network, total' });
     const toolbar = el('div', { className: 'toolbar' },
         el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice, regen),
         el('div', { className: 'row' }, menu('preset', 'Preset…', cb.presets, cb.preset),
-            button('Save', 'Save all settings as JSON', cb.save), button('Load', 'Load settings from JSON', cb.load),
+            button('Save', 'Save all settings as JSON', cb.save), button('Load', 'Load settings from JSON', cb.load), link,
             menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]())),
         status);
 

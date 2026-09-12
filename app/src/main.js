@@ -464,6 +464,24 @@ function record() {
     undoStack.splice(undoPos + 1, Infinity, s);
     if (undoStack.length > HISTORY_MAX) undoStack.shift();
     undoPos = undoStack.length - 1;
+    history.replaceState(null, '', '#' + shareHash()); // URL = aktueller Stand → Reload/Link verliert nichts
+}
+
+// Share-Link: alle Save-Schlüssel im Hash (nicht nur Abweichungen → Links überleben geänderte Defaults)
+function shareHash() {
+    return new URLSearchParams({ version: SAVE_VERSION, ...pickParams(params) }).toString();
+}
+function applyHash() {
+    const q = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+    if (!Object.keys(q).length || location.hash.slice(1) === shareHash()) return false;
+    if ((+q.version || 1) < SAVE_VERSION) console.warn(`Link: Version ${q.version ?? 1} < ${SAVE_VERSION} — gleicher Seed, anderes Terrain`);
+    applyPreset(pickParams(q));
+    return true;
+}
+window.addEventListener('hashchange', applyHash); // Link in denselben Tab eingefügt → kein Reload
+async function copyLink() {
+    record();
+    await navigator.clipboard.writeText(location.href);
 }
 function undoRedo(step) {
     record(); // noch nicht erfasste Änderung (entprellte Farbe) zuerst sichern, sonst springt Undo über sie
@@ -493,6 +511,7 @@ const panel = buildPanel(params, {
     preset: name => applyPreset(ALL_PRESETS[name]),
     save: saveSettings,
     load: () => loadInput.click(),
+    link: copyLink,
     exports: {
         'Heightmap PNG (16-bit)': exportPng16,
         'Splatmap PNG (RGBA)': exportSplatmap,
@@ -606,7 +625,7 @@ function exportMeta() {
     download(new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }), `heightmap-${params.seed}-meta.json`);
 }
 
-runGenerate();
+if (!applyHash()) runGenerate();
 
 renderer.setAnimationLoop(() => {
     controls.update();
