@@ -44,7 +44,12 @@ heightmap, masks and mesh for your engine.
 - **Presets**: Rolling hills, Pasture, Mountains, Canyon / Plateaus, Lakes, Eroded mountains, River valley, plus defaults
 - **Save / Load**: all settings incl. seed as JSON; every JSON in `app/presets/` shows up in the preset list
 
-**Export** (native size = 0.5 m per pixel, or 513 / 1025 / 2049 px vertex grids for Unreal landscapes; 1025 on the default map = exactly 0.5 m)
+**Export** for **Unreal, Unity, Godot (Terrain3D) or Web / three.js**: the target picks the sizes the engine accepts
+(Unreal: N+1 and 1009 / 2017 / 4033 / 8129, Unity: 513 … 4097, Godot and Web: native), the normal map convention
+(DirectX for Unreal, OpenGL otherwise) and the row order (Unity), and the metadata carries the values for the engine's
+import dialog (e.g. Unreal X/Y/Z scale and location). The size menu shows pixels and spacing; on the default map native is
+1024 px at 0.5 m, Unreal 1025 px at exactly 0.5 m. **Detail ×2** computes the map again at 0.25 m per pixel for the export:
+sharper road, bank, cliff and river edges.
 - Heightmap as 16-bit PNG and as RAW `.r16` (~2 mm steps), plus an 8-bit preview PNG
 - Splatmap RGBA (R road · G rock · B water/shore · A grass, weights sum to 255)
 - Masks: slope, normal map (DirectX / Unreal), curvature, flow map (where the water ran)
