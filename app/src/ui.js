@@ -62,6 +62,11 @@ export const TABS = {
             ['waterLevel', 'Water level (m)', 0, 50, 0.5, 'Everything below is water.'],
             ['baseLevel', 'Ground level (m)', 0, 60, 0.5, 'Ground height before hills; its distance to the water level decides lakes.'],
         ],
+        'Rivers & lakes': [
+            ['riverCatchment', 'River sources (% catchment)', 0, 10, 0.1, 'A river starts where this share of the map drains through one spot; smaller = more, longer rivers. 0 = no rivers or lakes.'],
+            ['riverWidth', 'River width (m)', 2, 15, 0.5, 'Width at the largest river mouth; rivers narrow towards their sources.'],
+            ['lakeArea', 'Min. lake area (m²)', 0, 3000, 50, 'Hollows at least this large fill up to their outflow and become lakes. 0 = no lakes.'],
+        ],
         'Border ring': [
             ['rimAmp', 'Height (m)', 0, 100, 1, 'Height of the closed ring that hides the horizon.'],
             ['rimZone', 'Width (m)', 10, 150, 5, 'How far the ring reaches in from the map edge.'],

@@ -9,6 +9,7 @@ import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvat
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, UNIFORM_FLOATS, EROSION_RES, PRE, autoMaxH } from './uniforms.js'; // PRE: Prepass-Auflösung (Routing, Hydrologie)
+import { hydrology } from './hydro.js';
 import { createErosion } from './erosion.js';
 import { createWalk } from './walk.js';
 
@@ -39,7 +40,7 @@ controls.minDistance = 40;
 controls.maxDistance = 1200;
 // headless-Prüfung: Kamera setzen, Readback lesen
 if (import.meta.env.DEV) window.dbg = { camera, controls, get heights() { return heights; }, get roadMask() { return roadMask; }, get maxH() { return params.maxH; },
-    get params() { return params; }, get terrain128() { return terrain128; } };
+    get params() { return params; }, get terrain128() { return terrain128; }, get water() { return water; } };
 
 // Sonne ≈ 30° hoch + schwächeres Himmelslicht → Relief auch bei flachen Hügeln lesbar
 scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x3a4a33, 0.7));
@@ -88,6 +89,9 @@ const params = {
     exitCount: 3,
     extraLinks: 2,
     reuse: 0.4,
+    riverCatchment: 0, // % der Map als Einzugsgebiet einer Quelle; 0 = keine Flüsse/Seen → Maps wie vorher (→ Plan/Fluesse.md)
+    riverWidth: 6,     // m an der größten Mündung
+    lakeArea: 300,     // m² Mindestfläche eines Bergsees (wirkt nur mit Flüssen)
     erosionStrength: 0, // % (0 = aus → Maps wie vor der Erosion, → Plan/Erosion.md)
     erosionIterations: 300,
     screeAngle: 90, // ° Schuttwinkel der thermischen Erosion; 90 = aus, darunter werden Abrisskanten zu Schutthängen
@@ -143,6 +147,7 @@ const rawBind = device.createBindGroup({
 
 let heights = new Float32Array(RES * RES);
 let roadMask = new Float32Array(RES * RES);
+let water = new Float32Array(RES * RES); // Spiegel von See/Fluss m je Pixel, 0 = nur Meer (→ spiegel())
 
 
 // Readback: Staging MAP_READ + copyBufferToBuffer + mapAsync (→ .clinerules/wgsl.md)
@@ -171,6 +176,7 @@ function serial(fn) {
 const computeMap = (p, res) => serial(() => computeMapNow(p, res));
 
 const NO_ROADS = new Float32Array(MAX_ROADS * ROAD_POINTS * 2), NO_LEVELS = new Float32Array(MAX_ROADS * ROAD_POINTS);
+const NO_LAKES = new Float32Array(PRE * PRE);
 
 // Roh-Terrain EROSION_RES² nach heightBuf → Erosion → erosion.delta / erosion.flow (→ Plan/Erosion.md)
 function runErosion(p, erode) {
@@ -194,22 +200,28 @@ async function computeMapNow(p, res) {
     const terrain = (await readBuffer(heightBuf, PRE * PRE * 4)).map(h => h * p.maxH);
     const tr = performance.now(); // Dispatch + Readback: Zeitstempel erst nach mapAsync, sonst nur Submit gemessen
 
-    const net = generateRoads(p.seed, MAP, { size: PRE, data: terrain }, p);
+    // Flüsse + Seen auf demselben Gelände wie das Routing → Straßen meiden sie und bleiben über dem Spiegel (→ Plan/Fluesse.md)
+    const hydro = p.riverCatchment > 0 ? hydrology({ size: PRE, data: terrain }, MAP, p) : null;
+    const net = generateRoads(p.seed, MAP, { size: PRE, data: terrain }, hydro ? { ...p, wet: hydro.wet, waterAt: hydro.waterAt } : p);
     const tg = performance.now();
-    encodeUniforms({ ...p, mapSize: MAP, res, roadCount: net.count, clearingCount: net.towns.length, riverCount: 0, erosionOn }, net.points, net.levels, net.towns, null, uniformsData);
+    encodeUniforms({ ...p, mapSize: MAP, res, roadCount: net.count, clearingCount: net.towns.length, riverCount: hydro?.riverCount ?? 0, erosionOn },
+        net.points, net.levels, net.towns, hydro?.rivers ?? null, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
+    queue.writeBuffer(lakesBuf, 0, hydro?.lakes ?? NO_LAKES); // aus → Nullen, sonst stünden die Seen des letzten Laufs
     dispatch(res);
     // Kopien laufen in Submit-Reihenfolge nach dem Dispatch
-    const [h, m] = await Promise.all([readBuffer(heightBuf, res * res * 4), readBuffer(roadMaskBuf, res * res * 4)]);
-    return { terrain, net, heights: h, roadMask: m, gpuMs: tr - t0 + performance.now() - tg, roadMs: tg - tr };
+    const [h, m, w] = await Promise.all([heightBuf, roadMaskBuf, waterBuf].map(b => readBuffer(b, res * res * 4)));
+    return { terrain, net, hydro, heights: h, roadMask: m, water: w, gpuMs: tr - t0 + performance.now() - tg, roadMs: tg - tr };
 }
 
 async function generate() {
     const t0 = performance.now();
     params.maxH = autoMaxH(params);
     const map = await computeMap(params, RES);
-    ({ terrain: terrain128, heights, roadMask } = map);
+    ({ terrain: terrain128, heights, roadMask, water } = map);
     const { points: roads, levels, count, nodes, towns } = map.net;
+    if (map.hydro) console.log(`Hydrology: ${map.hydro.riverCount} rivers · ${map.hydro.lakes.filter(l => l > 0).length} lake cells (128²)`);
+    if (import.meta.env.DEV) Object.assign(window.dbg, { hydro: map.hydro, net: map.net });
 
     // Prepass-Konsole-Check (→ Plan/Roads.md S1): Min/Max ≈ Final-Pass
     let pMn = Infinity, pMx = -Infinity;
@@ -246,14 +258,14 @@ function dispatch(res, pl = pipeline, bg = bind) {
 
 function logStats(roads, levels, count) {
     // Konsole-Check (→ Plan/Build.md M2 + M3)
-    let mn = Infinity, mx = -Infinity, sum = 0, water = 0;
+    let mn = Infinity, mx = -Infinity, sum = 0, wet = 0;
     let roadPx = 0, rMn = Infinity, rMx = -Infinity;
     for (let i = 0; i < heights.length; i++) {
         const h = heights[i] * params.maxH;
         if (h < mn) mn = h;
         if (h > mx) mx = h;
         sum += h;
-        if (h < params.waterLevel) water++;
+        if (h < spiegel(water[i], params.waterLevel)) wet++;
         const m = roadMask[i];
         if (m > 0.5) roadPx++;
         if (m >= 0.999) {
@@ -262,7 +274,7 @@ function logStats(roads, levels, count) {
         }
     }
     console.log(
-        `Heightmap 1024²: min ${mn.toFixed(1)} m · max ${mx.toFixed(1)} m · avg ${(sum / heights.length).toFixed(1)} m · water ${(100 * water / heights.length).toFixed(1)} %`
+        `Heightmap 1024²: min ${mn.toFixed(1)} m · max ${mx.toFixed(1)} m · avg ${(sum / heights.length).toFixed(1)} m · water ${(100 * wet / heights.length).toFixed(1)} %`
     );
     console.log(
         `Roads: ${(100 * roadPx / heights.length).toFixed(1)} % · road level ${rMn.toFixed(1)}–${rMx.toFixed(1)} m`
@@ -321,11 +333,14 @@ const rockWeight = s => Math.min(Math.max((s - ROCK_SLOPE[0]) / (ROCK_SLOPE[1] -
 // Fahrbahn-Anteil aus roadMask (weiche Kante) — geteilt von Farbrampe und Splatmap
 const roadWeight = m => Math.min(Math.max((m - 0.5) * 2, 0), 1);
 
-// schreibt 0–255-Werte (→ Plan/Build.md Datenfluss)
-function terrainColor(out, o, hm, m, s, rel) {
+// Wasserspiegel eines Pixels: See/Fluss aus dem Readback, sonst das Meer (→ Plan/Fluesse.md)
+const spiegel = (w, waterLevel) => w || waterLevel;
+
+// schreibt 0–255-Werte (→ Plan/Build.md Datenfluss); W = Wasserspiegel des Pixels
+function terrainColor(out, o, hm, m, s, rel, W) {
     let r, g, b;
-    if (hm < params.waterLevel) {
-        const t = hm / params.waterLevel;
+    if (hm < W) {
+        const t = hm / W;
         r = 42 + 20 * t;
         g = 90 + 28 * t;
         b = 158 + 22 * t;
@@ -381,15 +396,15 @@ function slopeRelief(h, n, maxH) {
 }
 
 // Farbrampe → RGBA-Pixel (Alpha 255) für n² Werte
-function colorize(d, n, h, m, s, rel, maxH) {
+function colorize(d, n, h, m, s, rel, maxH, wat, waterLevel) {
     for (let i = 0; i < n * n; i++) {
-        terrainColor(d, i * 4, h[i] * maxH, m[i], s[i], rel[i]);
+        terrainColor(d, i * 4, h[i] * maxH, m[i], s[i], rel[i], spiegel(wat[i], waterLevel));
         d[i * 4 + 3] = 255;
     }
 }
 
 function updatePreview() {
-    colorize(pimg.data, RES, heights, roadMask, slope, relief, params.maxH);
+    colorize(pimg.data, RES, heights, roadMask, slope, relief, params.maxH, water, params.waterLevel);
     pctx.putImageData(pimg, 0, 0);
 }
 
@@ -571,7 +586,7 @@ async function drawThumb(seed, canvas) {
     const m = await computeMap(p, THUMB);
     const { slope: s, relief: rel } = slopeRelief(m.heights, THUMB, p.maxH);
     const ctx = canvas.getContext('2d'), img = ctx.createImageData(THUMB, THUMB);
-    colorize(img.data, THUMB, m.heights, m.roadMask, s, rel, p.maxH);
+    colorize(img.data, THUMB, m.heights, m.roadMask, s, rel, p.maxH, m.water, p.waterLevel);
     ctx.putImageData(img, 0, 0);
 }
 
@@ -690,14 +705,16 @@ function exportR16() {
 }
 
 // Splatmap RGBA: R Straße · G Fels · B Wasser + Ufer (bis zur Sand-Grenze der Farbrampe) · A Rest (Gras);
-// Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md). Eingaben resamplen, nicht RGBA → Summe bleibt 255
+// Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md). Eingaben resamplen, nicht RGBA → Summe bleibt 255.
+// Wasser = Meer, Seen, Flüsse: Spiegel je Pixel resamplen, nicht die 0-codierten Rohwerte (0 = Meer) (→ Plan/Fluesse.md)
 async function exportSplatmap() {
     const n = exportRes, hs = resample(heights, RES, n), ms = resample(roadMask, RES, n), ss = resample(slope, RES, n);
+    const ws = water.some(w => w > 0) ? resample(Float32Array.from(water, w => spiegel(w, params.waterLevel)), RES, n) : null;
     const px = new Uint8Array(n * n * 4), shore = STOPS[1][0];
     for (let i = 0; i < n * n; i++) {
         const h = hs[i] * params.maxH;
         const road = roadWeight(ms[i]);
-        const wet = Math.min(Math.max(1 - (h - params.waterLevel) / shore, 0), 1);
+        const wet = Math.min(Math.max(1 - (h - (ws ? ws[i] : params.waterLevel)) / shore, 0), 1);
         const water = (1 - road) * wet;
         const rock = (1 - road) * (1 - wet) * rockWeight(ss[i]); // (1 − wet), nicht (1 − water): sonst Summe > 1
         const R = Math.floor(road * 255), G = Math.floor(rock * 255), B = Math.floor(water * 255);

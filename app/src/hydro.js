@@ -131,12 +131,13 @@ export function hydrology(terrain, mapSize, opts) {
         }
     }
 
-    // örtlicher Spiegel: Meer, See (3×3-Maximum wie im Shader), Fluss im Umkreis Bett + RIVER_WET + reach
+    // örtlicher Spiegel: Meer, See (Maximum der Zellen im Umkreis reach + 1 Zelle ≥ Seemaske im Shader), Fluss im Umkreis Bett + RIVER_WET + reach
     function waterAt(x, y, reach = 0) {
         let w = opts.waterLevel;
         const gx = Math.min(Math.max(Math.floor(x / cs), 0), N - 1), gy = Math.min(Math.max(Math.floor(y / cs), 0), N - 1);
-        for (let j = Math.max(gy - 1, 0); j <= Math.min(gy + 1, N - 1); j++)
-            for (let i = Math.max(gx - 1, 0); i <= Math.min(gx + 1, N - 1); i++) w = Math.max(w, lakes[j * N + i]);
+        const r = 1 + Math.ceil(reach / cs);
+        for (let j = Math.max(gy - r, 0); j <= Math.min(gy + r, N - 1); j++)
+            for (let i = Math.max(gx - r, 0); i <= Math.min(gx + r, N - 1); i++) w = Math.max(w, lakes[j * N + i]);
         for (const [ax, ay, bx, by, la, lb, wa, wb] of segs) {
             const [d, t] = segDist(x, y, ax, ay, bx, by);
             if (d < wa + (wb - wa) * t + RIVER_WET + reach) w = Math.max(w, la + (lb - la) * t);

@@ -11,6 +11,7 @@ const BAND_WIDTH = 12; // m neben einer Straße: teuer → spätere Straßen mü
 const BAND_AVOID = 3;  // Zusatzkosten pro m im Band
 const PATH_SMOOTH = 3; // Zellen Halbfenster gleitender Mittelwert (16-Nachbar-Pfad → Kurven statt Knicke)
 const GRADE_COST = 2;  // × len × (Steigung / roadMaxGrade − 1)² über dem Maximum (→ Plan/StrassenSteigung.md)
+const RAISE_MAX = 3;   // m: Straße bis so weit unter einem See-/Fluss-Spiegel wird darüber gehoben, tiefer = Einschnitt (→ Plan/Fluesse.md)
 
 // Deterministischer PRNG: gleicher Seed → gleiche Straßen
 function mulberry32(seed) {
@@ -141,13 +142,19 @@ function limitGrade(points, levels, n, g) {
     levels.set(lvl);
 }
 
+// Wasserspiegel an (x, y) im Umkreis reach m: aus hydrology() (Seen, Flüsse) oder überall waterLevel (→ Plan/Fluesse.md)
+const waterFn = opts => opts.waterAt ?? (() => opts.waterLevel);
+
 // → { points (MAX_ROADS×ROAD_POINTS×2), levels (MAX_ROADS×ROAD_POINTS), count, nodes, edges, mst, extra, towns }
+// opts.wet (Uint8Array N², nasse Zellen) + opts.waterAt(x, y, reach) optional aus hydrology()
 export function generateRoads(seed, mapSize, terrain, opts) {
     const net = planNetwork(seed, mapSize, terrain, opts);
+    const water = waterFn(opts);
     const edges = net.edges.slice(0, MAX_ROADS);
     const N = terrain.size, cs = mapSize / N;
     const points = new Float32Array(MAX_ROADS * ROAD_POINTS * 2);
     const levels = new Float32Array(MAX_ROADS * ROAD_POINTS);
+    const wk = new Float64Array(MAX_ROADS * ROAD_POINTS); // örtlicher Wasserspiegel je Punkt (nur mit opts.waterAt)
     const cellX = x => Math.min(N - 1, Math.max(0, Math.floor(x / cs)));
     const field = new Uint8Array(N * N); // 0 frei, 1 Band neben Straße, 2 Straße
     const band = Math.ceil(BAND_WIDTH / cs);
@@ -179,14 +186,31 @@ export function generateRoads(seed, mapSize, terrain, opts) {
         pts.push(B.x, B.y);
         const res = resample(chaikin(smoothPath(pts, PATH_SMOOTH), 2), ROAD_POINTS);
         points.set(res, r * ROAD_POINTS * 2);
-        // Level nie unter Wasser: auch der tiefste Punkt des Toleranzbands (Level − roadTolerance) bleibt trocken;
-        // die Hüllen in limitGrade bleiben zwischen Min und Max → Wasser-Boden hält weiter
+        // Level nie unter Wasser: auch der tiefste Punkt des Toleranzbands (Level − roadTolerance) bleibt trocken.
+        // Wasser entlang der halben Segmente zu beiden Nachbarn (Schritt ≤ 1 Zelle, Umkreis halbe Fahrbahn) → eine
+        // Flusskreuzung zwischen zwei Punkten hebt beide, ein See 10 m neben einem Einschnitt nicht
         for (let i = 0; i < ROAD_POINTS; i++) {
+            const k = r * ROAD_POINTS + i;
             const l = sampleTerrain(levelField, mapSize, res[2 * i], res[2 * i + 1]) + opts.roadOffset;
-            levels[r * ROAD_POINTS + i] = Math.max(l, opts.waterLevel + opts.roadTolerance + 0.3);
+            levels[k] = Math.max(l, opts.waterLevel + opts.roadTolerance + 0.3);
+            if (!opts.waterAt) continue;
+            let w = water(res[2 * i], res[2 * i + 1], opts.roadWidth / 2);
+            for (const j of [i - 1, i + 1]) {
+                if (j < 0 || j >= ROAD_POINTS) continue;
+                const dx = res[2 * j] - res[2 * i], dy = res[2 * j + 1] - res[2 * i + 1], steps = Math.ceil(Math.hypot(dx, dy) / 2 / cs);
+                for (let s = 1; s <= steps; s++)
+                    w = Math.max(w, water(res[2 * i] + dx * s / steps / 2, res[2 * i + 1] + dy * s / steps / 2, opts.roadWidth / 2));
+            }
+            wk[k] = w;
+            if (l > w - RAISE_MAX) levels[k] = Math.max(levels[k], w + opts.roadTolerance + 0.3);
         }
     });
     limitGrade(points, levels, edges.length * ROAD_POINTS, opts.roadMaxGrade / 100);
+    // Die Hüllen in limitGrade bleiben zwischen Min und Max → der überall gleiche Boden (waterLevel) hält; ein örtlicher
+    // (Fluss, See) kann abgetragen werden → nachklemmen, an der Kreuzung darf die Rampe steiler werden. Liegt die Straße mehr als
+    // RAISE_MAX unter dem Spiegel, ist sie im Einschnitt → bleibt (der Shader hält abgesenktes Gelände trocken)
+    if (opts.waterAt) for (let k = 0; k < edges.length * ROAD_POINTS; k++)
+        if (levels[k] > wk[k] - RAISE_MAX) levels[k] = Math.max(levels[k], wk[k] + opts.roadTolerance + 0.3);
     const towns = townLevels(net.nodes, edges, levels, levelField, mapSize, opts);
     return { points, levels, count: edges.length, nodes: net.nodes, edges, mst: net.mst, extra: net.extra, towns };
 }
@@ -202,7 +226,7 @@ function townLevels(nodes, edges, levels, levelField, mapSize, opts) {
             if (ia === t) { sum += levels[r * ROAD_POINTS]; k++; }
             if (ib === t) { sum += levels[r * ROAD_POINTS + ROAD_POINTS - 1]; k++; }
         });
-        const own = Math.max(sampleTerrain(levelField, mapSize, n.x, n.y) + opts.roadOffset, opts.waterLevel + opts.roadTolerance + 0.3);
+        const own = Math.max(sampleTerrain(levelField, mapSize, n.x, n.y) + opts.roadOffset, waterFn(opts)(n.x, n.y, 0) + opts.roadTolerance + 0.3);
         towns.push({ x: n.x, y: n.y, level: k ? sum / k : own });
     });
     return towns;
@@ -245,7 +269,7 @@ function placeTowns(rand, mapSize, terrain, opts) {
             lo = Math.min(lo, h);
             hi = Math.max(hi, h);
         }
-        if (lo < opts.waterLevel + 1) continue;
+        if (lo < waterFn(opts)(x, y, TOWN_PROBE) + 1) continue;
         cands.push({ x, y, score: hi - lo, k });
     }
     cands.sort((a, b) => a.score - b.score || a.k - b.k);
@@ -323,6 +347,7 @@ function edgePoint(edge, t, mapSize) {
 function dijkstra(terrain, mapSize, start, goal, opts, field) {
     const N = terrain.size, h = terrain.data, cs = mapSize / N, nN = N * N, gMax = opts.roadMaxGrade / 100;
     const rimCells = Math.max(opts.rimZone / cs - 1.5, 0); // Zellzentrum tiefer als rimZone − cs in der Randzone; ≥ 0 = Map-Grenze
+    const wet = opts.wet ?? Uint8Array.from(h, x => x < opts.waterLevel); // nass: Meer (+ Seen, Flüsse aus hydrology)
     const dist = new Float64Array(nN).fill(Infinity);
     const prev = new Int32Array(nN).fill(-1);
     const heap = minHeap(nN);
@@ -343,7 +368,7 @@ function dijkstra(terrain, mapSize, start, goal, opts, field) {
             const dh = Math.abs(h[v] - h[u]), over = dh / len / gMax - 1;
             let c = len + opts.slopePenalty * dh;
             if (over > 0) c += GRADE_COST * over * over * len;
-            if (h[u] < opts.waterLevel || h[v] < opts.waterLevel) c += opts.waterAvoid * len;
+            if (wet[u] || wet[v]) c += opts.waterAvoid * len;
             if (field[v] === 2) c *= opts.reuse;
             else if (field[v] === 1) c += BAND_AVOID * len;
             const nd = du + c;

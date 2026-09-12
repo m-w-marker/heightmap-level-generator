@@ -45,6 +45,7 @@ const RIVER_WET = 1.0;    // m: Wasser reicht über das Bett hinaus
 const LAKE_RES = 128u;    // = PRE (Prepass) in uniforms.js: See-Spiegelfeld
 const RIVER_DEPTH = 0.5;  // Tiefe je m halber Breite (= ¼ Breite)
 const RIVER_BANK = 0.577; // tan 30°: Ufer über dem Spiegel, danach steiler wie die Straßen-Böschung
+const LAKE_EDGE = 0.25;   // bilineare Seemaske: Wasser bis ~¾ Zelle über die Seezellen hinaus
 
 const SLOPE_VAR_WAVE = 40.0; // m
 const SLOPE_MIN = 0.1745;    // 10° in rad
@@ -68,7 +69,7 @@ struct Uniforms {
 @group(0) @binding(1) var<storage, read_write> heights: array<f32>;
 @group(0) @binding(2) var<storage, read_write> roadMask: array<f32>;
 @group(0) @binding(3) var<storage, read> erosionDelta: array<f32>; // EROSION_RES², erodiert − roh in m
-@group(0) @binding(4) var<storage, read_write> water: array<f32>;  // res², Wasserspiegel in m
+@group(0) @binding(4) var<storage, read_write> water: array<f32>;  // res², Spiegel von See/Fluss in m, 0 = nur Meer
 @group(0) @binding(5) var<storage, read> lakes: array<f32>;        // LAKE_RES², See-Spiegel in m (0 = kein See)
 
 // --- Noise ---
@@ -253,17 +254,26 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let rimF = smoothstep(0.0, u.params.rimZone, beyond);
     h += rimF * (0.55 + 0.6 * fbm(w * u.params.rimScale, layerKey(5u), 3)) * u.params.rimAmp; // ~30–80 %, keine gleichmäßige Wand
 
-    // 5b) Seen + Flüsse (→ Plan/Fluesse.md): See-Spiegel = Maximum der 3×3-Nachbarzellen des 128²-Felds → Ufer = Höhenlinie
-    // in voller Auflösung statt 3-m-Treppe. Fluss: nächstes Segment wie bei den Straßen; Bett parabolisch bis Spiegel − Tiefe,
-    // daneben Ufer per bank() über dem Spiegel; nur abtragen, nie aufschütten. Straßen danach → Damm an Kreuzungen
+    // 5b) Seen + Flüsse (→ Plan/Fluesse.md): See-Spiegel = Maximum der 2×2 nächsten Zellen des 128²-Felds, nur wo die
+    // bilineare Seemaske ≥ LAKE_EDGE → Ufer = Höhenlinie in voller Auflösung, außen begrenzt durch den geglätteten Seeumriss
+    // (feste 3×3-Dilatation schnitt tiefer liegendes 1024²-Gelände als Quadrat ab). Fluss: nächstes Segment wie bei den
+    // Straßen; Bett parabolisch bis Spiegel − Tiefe, daneben Ufer per bank() über dem Spiegel; nur abtragen, nie aufschütten.
+    // Straßen danach → Damm an Kreuzungen
     var wl = u.params.waterLevel;
-    let lc = vec2<i32>(floor(w / u.params.mapSize * f32(LAKE_RES)));
-    for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-            let c = clamp(lc + vec2<i32>(dx, dy), vec2<i32>(0), vec2<i32>(i32(LAKE_RES) - 1));
-            wl = max(wl, lakes[u32(c.y) * LAKE_RES + u32(c.x)]);
-        }
+    let lf = w / u.params.mapSize * f32(LAKE_RES) - 0.5;
+    let l0 = vec2<i32>(floor(lf));
+    let lt = lf - floor(lf);
+    var lakeW = 0.0;
+    var lakeL = 0.0;
+    for (var k = 0; k < 4; k++) {
+        let o = vec2<i32>(k & 1, k >> 1);
+        let c = clamp(l0 + o, vec2<i32>(0), vec2<i32>(i32(LAKE_RES) - 1));
+        let lv = lakes[u32(c.y) * LAKE_RES + u32(c.x)];
+        let wt = select(1.0 - lt.x, lt.x, o.x == 1) * select(1.0 - lt.y, lt.y, o.y == 1);
+        lakeW += select(0.0, wt, lv > 0.0);
+        lakeL = max(lakeL, lv);
     }
+    if (lakeW >= LAKE_EDGE) { wl = max(wl, lakeL); }
     let nRivers = min(u32(u.params.riverCount), MAX_RIVERS);
     if (nRivers > 0u) {
         var rD = 1e9;
@@ -286,6 +296,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         h = min(h, select(rL + bank(rD - rW, RIVER_BANK), rL - rW * RIVER_DEPTH * (1.0 - q * q), rD < rW));
         if (rD < rW + RIVER_WET) { wl = max(wl, rL); }
     }
+    let hPre = h;
 
     // 6) Straßen — gewinnt über allem: Fahrbahn folgt dem Gelände im Band Level ± roadTolerance, daneben
     // Böschung mit fester Neigung (Gelände in einen Kegel um das Band geklemmt → Kante nur, wo das Gelände
@@ -297,6 +308,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     heights[idx] = clamp(h / u.params.maxH, 0.0, 1.0);
-    water[idx] = wl;
+    // See/Fluss nur, wo das Gelände vor den Straßen unter dem Spiegel lag und die Straße es nicht abgesenkt hat → ein
+    // Straßeneinschnitt am See läuft nicht voll (→ RAISE_MAX in roadgen.js). 0 = Meer: JS nimmt dann waterLevel exakt (f32 ≠ f64)
+    water[idx] = select(0.0, wl, wl > u.params.waterLevel && hPre < wl && h >= hPre - 0.01);
     roadMask[idx] = 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + 1.0, dMin); // nur Fahrbahn (Farbe)
 }

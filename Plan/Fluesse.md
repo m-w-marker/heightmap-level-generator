@@ -57,7 +57,11 @@ Wasserspiegel; 2D-Vorschau, Splatmap (Kanal B) und Straßen kennen das neue Wass
 - [x] F2 Shader + Uniform (`waterLevel`, `riverCount` in Params → roads ab Byte 128; `rivers` hinter `towns`, 16,6 KB;
   Bindings `water` + `lakes`; `PRE` nach uniforms.js; Layout-Test inkl. Konstanten und 64-KiB-Grenze; aus: 7 Presets
   heights + roadMask bitgleich) — geprüft am 2026-09-12
-- [ ] F3 Einbindung — geprüft am
+- [x] F3 Einbindung (hydro vor roadgen; roadgen: `wet`-Strafe, Wasser-Boden entlang der halben Segmente, Anheben nur bis
+  `RAISE_MAX` 3 m unter dem Spiegel, tiefer = Einschnitt; Shader: See/Fluss nur wo Gelände vor den Straßen darunter lag und die
+  Straße nicht absenkte; Seemaske bilinear ≥ 0,25 statt 3×3-Quadrat; `water` 0 = Meer → exakt; Regler World/Rivers & lakes;
+  headless 6 Presets bei 2 %: Flüsse nur fallend, enden an Meer/See/Ringfuß, Fahrbahn 0 Pixel unter Wasser, Level GPU vs. CPU
+  0 Ausreißer; aus: heights + roadMask + Vorschau-Hash gleich dem F2-Stand) — geprüft am 2026-09-12
 - [ ] F4 3D-Wasserspiegel — geprüft am
 - [ ] F5 Tuning + Preset — geprüft am
 - [ ] F6 Doku — geprüft am
