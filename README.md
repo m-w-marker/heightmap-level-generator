@@ -5,7 +5,8 @@ No install, no account.**
 
 Generates game-ready terrain on the GPU (WebGPU compute shaders, WGSL): a 16-bit heightmap at 0.5 m per pixel
 (1024×1024 for the default 512 m map, up to 2560×2560 at 1280 m) with a road network, towns, cliffs, hills, mountains,
-erosion, rivers and lakes inside a closed border ring. Tweak everything live, walk through it in first person and
+erosion, rivers and lakes inside a closed border ring, in four biomes: temperate, steppe, desert and snow world.
+Tweak everything live, walk through it in first person and
 export heightmap, splatmap, masks, road and town layout and a 3D mesh for your engine: Unreal Engine landscape
 (16-bit PNG / `.r16`), Unity terrain (`.r16`), Godot Terrain3D or three.js / glTF.
 
@@ -45,16 +46,22 @@ export heightmap, splatmap, masks, road and town layout and a 3D mesh for your e
 - **Grade limit**: `roadMaxGrade` caps how steep a road may climb; routing looks for gaps instead of driving down a
   cliff, unavoidable climbs become ramps, consistent across the whole network
 - **Never under water**: roads avoid lakes and rivers and cross them on a raised embankment
+- **Highway markings**: in the steppe and desert the roads are asphalt with a dashed yellow centre line and white edge
+  lines (up to 12 m wide); the lines stop at junctions, forks and towns and stay sharp up close without flickering far away
 
 **Material**
-- **Ground textures in 3D**: grass, rock, gravel, sand, snow and road (CC0), placed automatically by slope, height, shore
-  and road like an auto-material; rock is projected from three sides, so cliffs don't stretch; detail normals catch the
-  light; far away the flat color map takes over
-- **Same rules everywhere**: rock angle, snow line and shore sand drive the 3D textures, the 2D map and the splatmap;
-  sand lines the shores of lakes and rivers too
-- **Your own textures**: replace `app/public/textures/<layer>/albedo.jpg` and `normal.jpg` (OpenGL normal map, any size);
-  sources and licenses in `app/public/textures/SOURCES.md`; `node tools/fetch-textures.mjs` (in `app/`) downloads the
-  originals again
+- **Biomes**: *Temperate*, *Steppe*, *Desert* and *Snow world* change textures, color map, water, light and road surface
+  of the whole world without regenerating it; terrain and roads stay, so a canyon in the desert works. In the snow world
+  lakes and rivers are ice. The presets *Steppe*, *Desert highway* and *Snow world* set biome, terrain and roads together
+- **Ground textures in 3D**: six layers per biome (ground, rock, scree, shore, top, road; CC0), placed automatically by
+  slope, height, shore and road like an auto-material; rock is projected from three sides, so cliffs don't stretch;
+  detail normals catch the light; far away the flat color map takes over
+- **Same rules everywhere**: rock angle, snow line and shore sand drive the 3D textures, the 2D map and the splatmap in
+  every biome; the shore layer lines lakes and rivers too
+- **Your own textures**: replace `app/public/textures/<biome>/<layer>/albedo.jpg` and `normal.jpg` (OpenGL normal map,
+  any size; layers `ground`, `rock`, `scree`, `shore`, `top`, `road`); sources and licenses in
+  `app/public/textures/<biome>/SOURCES.md`; `node tools/fetch-textures.mjs <biome>` (in `app/`) downloads the originals
+  again. Only the active biome is loaded (~16–19 MB)
 - *Textures* off shows the plain color map (lighter on weak GPUs); *Texture size* 1K needs a quarter of the GPU memory
 
 **Tool**
@@ -64,7 +71,8 @@ export heightmap, splatmap, masks, road and town layout and a 3D mesh for your e
   rarely used ones under *Advanced*
 - **Undo / redo**: Ctrl+Z / Ctrl+Y over all settings
 - **Share link**: the URL always holds all settings; *Link* copies it, the same map opens in any WebGPU browser
-- **Presets**: Rolling hills, Pasture, Mountains, Canyon / Plateaus, Lakes, Eroded mountains, River valley, plus defaults
+- **Presets**: Rolling hills, Pasture, Mountains, Canyon / Plateaus, Lakes, Eroded mountains, River valley, Steppe,
+  Desert highway, Snow world, plus defaults
 - **Save / Load**: all settings incl. seed as JSON; every JSON in `app/presets/` shows up in the preset list
 
 **Export** for **Unreal, Unity, Godot (Terrain3D) or Web / three.js**: the target picks the sizes the engine accepts
@@ -151,21 +159,25 @@ All distances are in meters (1 unit = 1 m), coverages and river catchment in % o
 | | Water & ground | `waterLevel`, `baseLevel`, `maxH` (auto) |
 | | Rivers & lakes | `riverCatchment`, `riverWidth`, `lakeArea` |
 | | Border ring | `rimAmp`, `rimZone`, *`rimWave`* |
-| Material | Rock & snow | `rockSlope`, `rockBlend`, `snowHeight`, `snowBlend` |
+| Material | Biome | `biome` (`temperate`, `steppe`, `desert`, `snow`; missing in older files = `temperate`) |
+| | Rock & snow | `rockSlope`, `rockBlend`, `snowHeight`, `snowBlend` |
 | | Ground | `sandHeight`, `gravelCurv` |
 | | Textures | `texScale`, `texFade`, `texTint` |
 | | View | *Textures* on/off, *Texture size* 1K / 2K (not saved) |
 
-Material settings change only the colors and textures; they don't regenerate the map.
+Material settings change only the colors and textures; they don't regenerate the map. Switching the biome also sets
+its road color (`roadColor`), which you can change afterwards.
 
 ## How it works
 
 Seed + parameters → optional erosion on a half-resolution GPU grid (`erosion.wgsl`) → GPU prepass at 3 m cells (terrain only) →
 rivers and lakes on the CPU (`hydro.js`: priority flood, drainage, river courses) → road network on the CPU
 (`roadgen.js`: towns, spanning tree, Dijkstra routing, grade-limited road levels above the water) → uniform buffer →
-compute shader (`heightmap.wgsl`) → height, road mask, water level and town mask buffers → readback → 2D canvas preview,
-3D terrain mesh and water surface. The 3D material (`material.js`, three.js TSL node material) blends the texture layers
-per pixel from a mask texture (slope, curvature, road, distance to the shore) and fades into the color map with distance.
+compute shader (`heightmap.wgsl`) → height, road mask, water level, town mask and road coordinate buffers → readback →
+2D canvas preview, 3D terrain mesh and water surface. The 3D material (`material.js`, three.js TSL node material) blends
+the texture layers of the biome (`biomes.js`) per pixel from a mask texture (slope, curvature, road, distance to the
+shore), draws road markings from the road coordinates (distance across the road, position along it) and fades into the
+color map with distance.
 
 ## Tech
 

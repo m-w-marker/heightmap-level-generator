@@ -888,7 +888,7 @@ panel.guis.World.add(params, 'maxH').name('Max height (auto, m)').decimals(1).di
 {
     const f = panel.guis.Material.addFolder('View');
     const c = f.add(view, 'textures').name('Textures').onChange(setMaterials);
-    c.domElement.title = 'Real ground textures up close (grass, rock, gravel, sand, snow, road); off = the flat color map, lighter on weak GPUs. Not saved.';
+    c.domElement.title = 'Real ground textures of the biome up close (ground, rock, scree, shore, top, road); off = the flat color map, lighter on weak GPUs. Not saved.';
     c.domElement.dataset.key = 'textures';
     const s = f.add(view, 'texSize', { '2K': 2048, '1K': 1024 }).name('Texture size').onChange(loadTextures);
     s.domElement.title = 'Resolution of the ground textures: 1K needs a quarter of the GPU memory (~70 instead of ~270 MB). Not saved.';
