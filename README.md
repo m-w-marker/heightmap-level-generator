@@ -54,8 +54,43 @@ sharper road, bank, cliff and river edges.
 - Heightmap as 16-bit PNG and as RAW `.r16` (~2 mm steps), plus an 8-bit preview PNG
 - Splatmap RGBA (R road · G rock · B water/shore · A grass, weights sum to 255)
 - Masks: slope, normal map (DirectX / Unreal), curvature, flow map (where the water ran)
+- Road, town and water masks: where the roads, the town clearings and the water are, with a soft edge
+- Layout JSON: towns, exits, roads, rivers and lakes as points and connections, for your own scripts
+  (see [Masks and layout for your own tools](#masks-and-layout-for-your-own-tools))
 - 3D mesh as glTF `.glb` with the color texture, 1 unit = 1 m
 - Metadata JSON: map size, `maxH`, pixel convention, mask encodings, all settings
+
+### Masks and layout for your own tools
+
+Meant for automation in any engine or tool: paint materials, keep vegetation off roads and water, place buildings
+(PCG, Houdini, a script), build road splines, find paths.
+
+**Road / Town / Water mask PNG**: 8-bit gray, linear data (import without sRGB), same size, target and row order as the
+heightmap. 255 = inside, 0 = outside, with a soft edge instead of hard steps; for a hard edge use `value >= 128`.
+- *Road*: the road surface, soft 1 m edge (the R channel of the splatmap without its priorities)
+- *Town*: the flat clearing around each town, irregular outline, soft 4 m edge; roads are not included. Empty when
+  *Towns* = 0 or the clearing radius is 0
+- *Water*: sea, lakes and rivers; value = water depth / 0.4 m (0 at the shore, 128 = 0.2 m deep)
+
+**Layout JSON**: the geometry of the generated map, independent of the target engine. Metres, origin in the map
+centre, axes like the `.glb` mesh (right-handed, y up): x = image column, z = image row, x and z from −mapSize/2 to
++mapSize/2. The file describes itself (`coordinates`, `fields`); `export` holds the grid of the images exported with
+the same settings: sample (i, j) lies at x = x0 + i·dx, z = z0 + j·dz (Unity exports have their rows flipped, dz < 0).
+`coordinates.engines` gives the conversion for Unreal (cm, Z up), Unity, Godot and three.js.
+
+```json
+{
+  "towns":  [{ "id": "town0", "position": [181.67, 33.45, 185.02], "level": 33.24, "radius": 8, "roads": ["road0", "road7"] }],
+  "exits":  [{ "id": "exit0", "position": [-138.45, 35.95, -196], "road": "road6" }],
+  "roads":  [{ "id": "road0", "from": "town0", "to": "town1", "width": 4, "points": [[181.67, 33.45, 185.02], ...], "level": [...] }],
+  "rivers": [{ "id": "river0", "points": [[x, water surface, z, width], ...] }],
+  "lakes":  [{ "id": "lake0", "level": 55.55, "area": 768, "centre": [x, y, z], "bbox": [xMin, zMin, xMax, zMax] }],
+  "sea":    { "level": 15 }
+}
+```
+
+Road points follow the centre line from `from` to `to`; their y is the road surface in the heightmap. Rivers run from
+the source to the mouth (last point). Lake outlines and the exact clearing shapes are in the masks.
 
 ## Quick start
 
@@ -100,7 +135,7 @@ All distances are in meters (1 unit = 1 m), coverages and river catchment in % o
 Seed + parameters → optional erosion on a half-resolution GPU grid (`erosion.wgsl`) → GPU prepass at 3 m cells (terrain only) →
 rivers and lakes on the CPU (`hydro.js`: priority flood, drainage, river courses) → road network on the CPU
 (`roadgen.js`: towns, spanning tree, Dijkstra routing, grade-limited road levels above the water) → uniform buffer →
-compute shader (`heightmap.wgsl`) → height, road mask and water level buffers → readback → 2D canvas preview,
+compute shader (`heightmap.wgsl`) → height, road mask, water level and town mask buffers → readback → 2D canvas preview,
 3D terrain mesh and water surface.
 
 ## Tech
