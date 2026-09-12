@@ -8,6 +8,7 @@ import { inflateRawSync } from 'node:zlib';
 import jpeg from 'jpeg-js';
 
 const Q_ALBEDO = 80, Q_NORMAL = 80; // 90 kostete +8 MB, am Gelände nicht sichtbar
+const Q_NORMAL_OF = { steppe: 70 }; // detailreiche Normalen → sonst > 20 MB je Biom
 
 // je Biom Quelle je Rolle (= Ordnername, den das Material lädt, ROLES in biomes.js)
 const SETS = {
@@ -19,10 +20,35 @@ const SETS = {
         top: { src: 'ambientcg', id: 'Snow006' },
         road: { src: 'polyhaven', id: 'gravel_road' },
     },
+    steppe: {
+        ground: { src: 'polyhaven', id: 'withered_grass' },
+        rock: { src: 'polyhaven', id: 'rocks_ground_08' },
+        scree: { src: 'polyhaven', id: 'dry_river_pebbles' },
+        shore: { src: 'polyhaven', id: 'brown_mud_dry' },
+        top: { src: 'polyhaven', id: 'dry_ground_01' },
+        road: { src: 'polyhaven', id: 'asphalt_02' },
+    },
+    desert: {
+        ground: { src: 'polyhaven', id: 'sand_01' },
+        rock: { src: 'polyhaven', id: 'sandstone_cracks' },
+        scree: { src: 'polyhaven', id: 'gravelly_sand' },
+        shore: { src: 'polyhaven', id: 'mud_cracked_dry_riverbed_002' }, // Salzpfanne
+        top: { src: 'polyhaven', id: 'red_sand' },
+        road: { src: 'polyhaven', id: 'asphalt_01' },
+    },
+    snow: {
+        ground: { src: 'polyhaven', id: 'snow_02' },
+        rock: { src: 'polyhaven', id: 'rock_face_03' },
+        scree: { src: 'polyhaven', id: 'rocks_ground_05' },
+        shore: { src: 'ambientcg', id: 'Ice002' },
+        top: { src: 'ambientcg', id: 'Ice003' },
+        road: { src: 'polyhaven', id: 'asphalt_snow' },
+    },
 };
 const biome = process.argv[2];
 if (!SETS[biome]) throw new Error(`Biom angeben: ${Object.keys(SETS).join(' | ')}`);
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'textures', biome);
+const qNormal = Q_NORMAL_OF[biome] ?? Q_NORMAL;
 
 async function get(url) {
     const r = await fetch(url);
@@ -63,7 +89,7 @@ let total = 0;
 for (const [role, l] of Object.entries(SETS[biome])) {
     const s = await sources(l), dir = join(OUT, role);
     mkdirSync(dir, { recursive: true });
-    for (const [kind, q] of [['albedo', Q_ALBEDO], ['normal', Q_NORMAL]]) {
+    for (const [kind, q] of [['albedo', Q_ALBEDO], ['normal', qNormal]]) {
         if (!s[kind]) throw new Error(`${l.id}: ${kind} fehlt`);
         const img = jpeg.decode(s[kind], { maxMemoryUsageInMB: 1024 });
         const out = jpeg.encode(img, q).data;
@@ -75,7 +101,7 @@ for (const [role, l] of Object.entries(SETS[biome])) {
 }
 writeFileSync(join(OUT, 'SOURCES.md'), `# Texturen ${biome} (CC0)
 
-Geladen und neu codiert (JPG Albedo ${Q_ALBEDO}, Normal ${Q_NORMAL}) von \`tools/fetch-textures.mjs ${biome}\`. Je Rolle
+Geladen und neu codiert (JPG Albedo ${Q_ALBEDO}, Normal ${qNormal}) von \`tools/fetch-textures.mjs ${biome}\`. Je Rolle
 \`albedo.jpg\` (sRGB) und \`normal.jpg\` (OpenGL-Konvention); eigene Texturen gleichen Namens beliebiger Größe ersetzen sie.
 
 | Rolle | Quelle | URL | Lizenz |
