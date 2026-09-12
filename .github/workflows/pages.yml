@@ -28,8 +28,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
-      # naga läuft nur lokal (Windows-Pfad) → hier sanity + build statt check
-      - run: npm run sanity
+      # nur build: check ist lokal (naga = Windows-Pfad, sanity hat Laufzeit-Budgets für die Dev-Maschine)
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
