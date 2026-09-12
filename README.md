@@ -5,6 +5,8 @@ Generates a heightmap at 0.39 m per pixel (1024×1024 for the default 400 m map,
 mountains, erosion, rivers and lakes inside a closed border ring — tweak everything live, walk through it and export
 heightmap, masks and mesh for your engine.
 
+**▶ Try it in your browser: https://m-w-marker.github.io/heightmap-level-generator/** (needs WebGPU, e.g. current desktop Chrome or Edge)
+
 ![Generator: 3D terrain with road network, 2D map and parameter panel](docs/generator.png)
 
 ## Features

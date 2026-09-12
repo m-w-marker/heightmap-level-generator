@@ -1,6 +1,6 @@
 # Plan: GitHub Pages
 
-**Status:** in Arbeit
+**Status:** erledigt
 **Datum:** 2026-09-11
 
 ## Ziel
@@ -24,7 +24,7 @@ Das Tool direkt aus dem GitHub-Repo im Browser nutzbar machen (GitHub Pages), Li
 - [x] P1 Username + Remote (m-w-marker, Repo öffentlich, fetch ok) — geprüft am 2026-09-12
 - [x] P2 Vite base (dist aus `/heightmap-level-generator/` headless: rendert, keine 404 außer favicon) — geprüft am 2026-09-12
 - [x] P3 WebGPU-Hinweis (auch bei stillem WebGL-Fallback von three; headless ohne `navigator.gpu`) — geprüft am 2026-09-12
-- [ ] P4 Pages-Workflow (Datei steht; `npm run sanity` + `build`, naga nur lokal) — geprüft am
-- [ ] P5 README-Link — geprüft am
+- [x] P4 Pages-Workflow (nur `npm ci` + `build`; `check` bleibt lokal, sanity-Laufzeit-Budgets reißen auf dem Runner; Workflow grün, Live-Seite rendert headless) — geprüft am 2026-09-12
+- [x] P5 README-Link — geprüft am 2026-09-12
 
 <!-- fertig: git mv Plan/<Datei>.md Plan/erledigt/ -->
