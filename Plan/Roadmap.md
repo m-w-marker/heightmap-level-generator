@@ -13,7 +13,7 @@ und nichts doppelt angefasst wird. Große Punkte (Erosion, Flüsse, Map-Größe)
 - Export-Auflösung (2ⁿ+1) = Resampling beim Export → Rechengitter bleibt 1024²; variable Map-Größe ist ein eigener, späterer Punkt.
 - Masken (Neigung, Normale, Krümmung) einmal berechnen, von Export (R8) und Texturierung (R11) gemeinsam genutzt → Unreal und Tool sehen dieselben Masken.
 - Texturierung zweigleisig: Masken-Export für Unreal (Engine texturiert selbst) + Texturierung im Tool (Auto-Material wie Unreal). Export zuerst, weil klein.
-- Texturen nur CC0 (ambientCG / Poly Haven), klein halten (≤ 1K, komprimiert) → Repo und Pages-Download bleiben schlank.
+- Texturen nur CC0 (ambientCG / Poly Haven), 1–2K (User 2026-09-12: 2K im Repo, 1K per Regler) → Repo und Pages-Download bleiben schlank.
 - Splatmap im 3D vor glTF-Export und Texturierung → beide bauen auf der Einfärbung auf; Walk-Modus nach Texturierung → Nahansicht lohnt erst mit Texturen.
 - Erosion vor Flüssen → Flüsse nutzen deren Abflussdaten; Flow-Map-Export kommt mit der Erosion.
 - `GitHubPages.md` bleibt eigener Plan, kommt nach R5 dran. Pages-Workflow nur `npm run build` (naga-Runner gibt es in Actions nicht).
