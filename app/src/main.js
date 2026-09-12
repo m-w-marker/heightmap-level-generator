@@ -121,7 +121,8 @@ const params = {
     erosionIterations: 300,
     screeAngle: 90, // ° Schuttwinkel der thermischen Erosion; 90 = aus, darunter werden Abrisskanten zu Schutthängen
 };
-const DEFAULTS = { ...params }; // Basis jedes Presets
+// Basis jedes Presets; ohne maxH: sonst stünde es bis zur nächsten Regeneration auf 0 (flache Map, Export mit maxH 0)
+const { maxH: _, ...DEFAULTS } = params;
 let { res: RES, tn: TN } = grids(params.mapSize); // Heightmap px / Mesh-Ecken je Kante der angezeigten Map
 
 const uniformsData = new Float32Array(UNIFORM_FLOATS);
@@ -245,8 +246,10 @@ async function computeMapNow(p, res) {
 async function generate() {
     const t0 = performance.now();
     params.maxH = autoMaxH(params);
-    const g = grids(params.mapSize);
-    const map = await computeMap(params, g.res);
+    const g = grids(params.mapSize), size = params.mapSize;
+    // Kopie: Regler/Preset während der awaits → sonst Straßen des neuen Stands auf dem Terrain des alten
+    const map = await computeMap({ ...params }, g.res);
+    if (params.mapSize !== size) return; // Mesh passte nicht mehr zur Map-Größe; die dabei geplante Regeneration zeigt die neue
     ({ terrain: terrain128, heights, roadMask, water } = map);
     if (g.res !== RES) resizeView(g);
     const { points: roads, levels, count, nodes, towns } = map.net;
@@ -639,12 +642,13 @@ const undoStack = [];
 let undoPos = -1;
 let colorTimer = 0;
 function record() {
+    // URL = aktueller Stand → Reload/Link verliert nichts; vor dem Vergleich, sonst bliebe sie nach Undo/Redo (Stand schon im Stack) alt
+    history.replaceState(null, '', '#' + shareHash());
     const s = JSON.stringify(pickParams(params));
     if (s === undoStack[undoPos]) return;
     undoStack.splice(undoPos + 1, Infinity, s);
     if (undoStack.length > HISTORY_MAX) undoStack.shift();
     undoPos = undoStack.length - 1;
-    history.replaceState(null, '', '#' + shareHash()); // URL = aktueller Stand → Reload/Link verliert nichts
 }
 
 // Share-Link: alle Save-Schlüssel im Hash (nicht nur Abweichungen → Links überleben geänderte Defaults)
