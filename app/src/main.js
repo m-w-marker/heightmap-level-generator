@@ -5,7 +5,7 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildPanel, seedGrid } from './ui.js';
 import { encodePng } from './png.js';
 import { quantize16, encodeR16, sampleBilinear, resample, TARGETS, exportSizes, engineImport, flipRows, exportGrid, layout } from './export.js';
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, TOWN_FADE } from './masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, TOWN_FADE, slopeRelief, materialMask } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, UNIFORM_FLOATS, grids, autoMaxH } from './uniforms.js';
@@ -64,7 +64,7 @@ function fitView(size) {
 }
 // headless-Prüfung: Kamera setzen, Readback lesen
 if (import.meta.env.DEV) window.dbg = { camera, controls, scene, get heights() { return heights; }, get roadMask() { return roadMask; }, get maxH() { return params.maxH; },
-    get params() { return params; }, get terrain128() { return terrain128; }, get water() { return water; }, get townMask() { return townMask; } };
+    get params() { return params; }, get terrain128() { return terrain128; }, get water() { return water; }, get townMask() { return townMask; }, get maskTex() { return maskTex; } };
 
 // Sonne ≈ 30° hoch + schwächeres Himmelslicht → Relief auch bei flachen Hügeln lesbar
 scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x3a4a33, 0.7));
@@ -272,6 +272,7 @@ async function generate() {
 
     logStats(roads, levels, count);
     ({ slope, relief } = slopeRelief(heights, RES, params.maxH, params.mapSize));
+    updateMaskTex();
     refreshView();
     if (terrain) {
         scene.remove(terrain);
@@ -420,26 +421,8 @@ function terrainColor(out, o, hm, m, s, rel, W) {
     out[o + 2] = b;
 }
 
-// Aus dem Readback h (n², 0–1), einmal pro Regeneration (Kanten geclamped):
-// slope = Hangneigung |∇h| in m/m (zentrale Differenzen); relief = Höhe − Mittel im Abstand RELIEF_M in m
-// (> 0 Kuppe, < 0 Mulde) → Farbe heller/dunkler, macht flache Hügel lesbar
-// vereinfacht: eigene Neigung statt masks.js – Zusammenführen mit R11 (→ Plan/Roadmap.md)
-const RELIEF_M = 9.375; // m (= 24 px bei 0,39 m/px, jetzt 19 px); fest in m, sonst wüchse die Tönung mit der Map (→ Plan/MapGroesse.md)
-let slope = new Float32Array(RES * RES);
+let slope = new Float32Array(RES * RES);  // m/m (slopeRelief in masks.js)
 let relief = new Float32Array(RES * RES);
-function slopeRelief(h, n, maxH, mapSize) {
-    const px = mapSize / n, k = maxH / (2 * px), r = Math.max(Math.round(RELIEF_M / px), 1);
-    const s = new Float32Array(n * n), rel = new Float32Array(n * n);
-    const at = (x, y) => h[Math.min(Math.max(y, 0), n - 1) * n + Math.min(Math.max(x, 0), n - 1)];
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-        const gx = (at(x + 1, y) - at(x - 1, y)) * k;
-        const gy = (at(x, y + 1) - at(x, y - 1)) * k;
-        s[y * n + x] = Math.hypot(gx, gy);
-        const avg = (at(x - r, y) + at(x + r, y) + at(x, y - r) + at(x, y + r)) / 4;
-        rel[y * n + x] = (at(x, y) - avg) * maxH;
-    }
-    return { slope: s, relief: rel };
-}
 
 // Farbrampe → RGBA-Pixel (Alpha 255) für n² Werte
 function colorize(d, n, h, m, s, rel, maxH, wat, waterLevel) {
@@ -469,6 +452,20 @@ function makeTerrainTex() {
 }
 let terrainTex = makeTerrainTex();
 const terrainMat = new THREE.MeshStandardMaterial({ map: terrainTex, roughness: 1, metalness: 0 });
+
+// Material-Maske RES² für das Auto-Material (→ Plan/Texturierung.md): Daten, kein sRGB, ohne Mips; Texel wie terrainTex
+let maskTex = null;
+function updateMaskTex() {
+    const cell = params.mapSize / RES, c = curvature(heights, RES, cell, params.maxH);
+    const above = Float32Array.from(heights, (h, i) => h * params.maxH - spiegel(water[i], params.waterLevel));
+    const data = materialMask(slope, c, curvatureScale(c), roadMask, above);
+    if (maskTex?.image.width !== RES) {
+        maskTex?.dispose();
+        maskTex = new THREE.DataTexture(data, RES, RES);
+        maskTex.magFilter = maskTex.minFilter = THREE.LinearFilter;
+    } else maskTex.image.data = data;
+    maskTex.needsUpdate = true;
+}
 let terrain = null;
 
 // Andere Map-Größe → andere Raster (→ Plan/Aufloesung.md): Vorschau-Canvas und Farbtextur neu anlegen (Texturgröße ist fest)

@@ -18,6 +18,24 @@ export function gradient(h, n, cell, maxH) {
     return { gx, gy };
 }
 
+// Farbrampe von Vorschau + 3D-Farbtextur (einmal pro Regeneration, Kanten geclamped statt einseitig wie gradient() →
+// Vorschau bleibt pixelgleich): slope = |∇h| in m/m (zentrale Differenzen); relief = Höhe − Mittel im Abstand RELIEF_M
+// in m (> 0 Kuppe, < 0 Mulde) → Farbe heller/dunkler, macht flache Hügel lesbar
+export const RELIEF_M = 9.375; // m (= 24 px bei 0,39 m/px, jetzt 19 px); fest in m, sonst wüchse die Tönung mit der Map
+export function slopeRelief(h, n, maxH, mapSize) {
+    const px = mapSize / n, k = maxH / (2 * px), r = Math.max(Math.round(RELIEF_M / px), 1);
+    const s = new Float32Array(n * n), rel = new Float32Array(n * n);
+    const at = (x, y) => h[Math.min(Math.max(y, 0), n - 1) * n + Math.min(Math.max(x, 0), n - 1)];
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        const gx = (at(x + 1, y) - at(x - 1, y)) * k;
+        const gy = (at(x, y + 1) - at(x, y - 1)) * k;
+        s[y * n + x] = Math.hypot(gx, gy);
+        const avg = (at(x - r, y) + at(x + r, y) + at(x, y - r) + at(x, y + r)) / 4;
+        rel[y * n + x] = (at(x, y) - avg) * maxH;
+    }
+    return { slope: s, relief: rel };
+}
+
 // Hangneigung in Grad (0 = eben, 90 = senkrecht)
 export function slopeDeg({ gx, gy }) {
     return gx.map((x, i) => Math.atan(Math.hypot(x, gy[i])) * 180 / Math.PI);
@@ -77,6 +95,19 @@ export const waterBytes = (h, level, maxH) => Uint8Array.from(h, (v, i) => byte(
 export const flowBytes = (f, scale) => Uint8Array.from(f, v => byte(Math.log1p(Math.max(v, 0)) / Math.log1p(scale)));
 export const slopeBytes = deg => Uint8Array.from(deg, d => byte(d / 90));
 export const curvatureBytes = (c, scale) => Uint8Array.from(c, v => byte(0.5 + v / (2 * scale)));
+// Material-Maske des 3D-Auto-Materials (→ Plan/Texturierung.md), RGBA8 linear, dieselben Codierungen wie der Export:
+// R Neigung °/90 (slope in m/m), G Krümmung 128 ± dev/curvScale, B roadMask, A Höhe über dem örtlichen Wasserspiegel
+export const SHORE_RANGE = 10; // m bei A = 255 (Sand-Regler bis 5 m → 4 cm je Stufe)
+export function materialMask(slope, curv, curvScale, road, above) {
+    const out = new Uint8Array(slope.length * 4);
+    for (let i = 0, o = 0; i < slope.length; i++, o += 4) {
+        out[o] = byte(Math.atan(slope[i]) * 2 / Math.PI);
+        out[o + 1] = byte(0.5 + curv[i] / (2 * curvScale));
+        out[o + 2] = byte(road[i]);
+        out[o + 3] = byte(above[i] / SHORE_RANGE);
+    }
+    return out;
+}
 // RGBA, A = 255 (encodePng kann Grau oder RGBA); rgb = n · 0.5 + 0.5; openGL: G gespiegelt („green up“, Unity/Godot/three)
 export function normalBytes(nrm, openGL = false) {
     const out = new Uint8Array(nrm.length / 3 * 4), g = openGL ? -1 : 1;

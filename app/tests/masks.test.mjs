@@ -1,5 +1,5 @@
 // Masken (→ Plan/Roadmap.md R8): Ebene = Neigung 0 / Normale oben; Rampe = bekannter Winkel; Kamm hell, Mulde dunkel
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE } from '../src/masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, materialMask, SHORE_RANGE, slopeRelief } from '../src/masks.js';
 
 let fail = 0;
 function check(cond, msg) {
@@ -72,6 +72,21 @@ for (const sign of [1, -1]) {
     const lv = 15, depth = [-1, 0, WATER_FADE / 4, WATER_FADE * 3 / 4, WATER_FADE, 5]; // ¼, ¾: fern der Rundungsgrenze
     const w = waterBytes(depth.map(d => (lv - d) / maxH), depth.map(() => lv), maxH);
     check(w.join() === '0,0,64,191,255,255', `Water mask trocken/Ufer/¼/¾/voll: ${w.join()}`);
+}
+
+// Material-Maske: R Neigung wie slopeBytes, G Krümmung wie curvatureBytes, B Straße, A Höhe über Wasser / SHORE_RANGE
+{
+    const s = [0, Math.tan(30 * Math.PI / 180), 1e9], c = [0, 0.5, -2], road = [0, 0.5, 1], above = [-1, SHORE_RANGE / 2, 99];
+    const m = materialMask(s, c, 1, road, above), ch = k => [0, 1, 2].map(i => m[4 * i + k]).join();
+    check(ch(0) === [0, ...slopeBytes([30, 90])].join(), `Material-Maske R: ${ch(0)}`);
+    check(ch(1) === curvatureBytes(c, 1).join(), `Material-Maske G: ${ch(1)}`);
+    check(ch(2) === '0,128,255' && ch(3) === '0,128,255', `Material-Maske B ${ch(2)} / A ${ch(3)}`);
+}
+// slopeRelief: Rampe 30° innen, Relief einer Rampe 0
+{
+    const t = Math.tan(30 * Math.PI / 180), h = field(x => 10 + x * cell * t), { slope, relief } = slopeRelief(h, n, maxH, n * cell);
+    const k = (n >> 1) * (n + 1);
+    check(Math.abs(slope[k] - t) < 1e-4 && Math.abs(relief[k]) < 1e-4, `slopeRelief Rampe: ${slope[k]} / ${relief[k]}`);
 }
 
 if (fail) process.exit(1);
