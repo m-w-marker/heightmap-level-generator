@@ -45,6 +45,27 @@
       #panel .tabs button.active { border-bottom-color: #2cc9ff; color: #fff; }
       #panel .tab-body { overflow-y: auto; }
       #panel .tab-gui > .lil-title { display: none; }
+      /* Seed-Vergleich (→ Plan/Roadmap.md R13): über 3D + Preview, Panel bleibt bedienbar */
+      #seedGrid {
+        position: fixed; inset: 0 300px 0 0; z-index: 15;
+        display: flex; flex-direction: column;
+        background: rgb(14 17 22 / 0.94); color: #ebebeb;
+        font: 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      #seedGrid .bar { display: flex; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #333; }
+      #seedGrid .bar span { flex: 1; color: #9a9a9a; }
+      #seedGrid button {
+        font: inherit; color: inherit; background: #2c2c2c; border: 1px solid #3a3a3a;
+        border-radius: 3px; height: 22px; padding: 0 8px; cursor: pointer;
+      }
+      #seedGrid button:hover { background: #3a3a3a; }
+      #seedGrid .grid {
+        flex: 1; overflow-y: auto; padding: 12px;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; align-content: start;
+      }
+      #seedGrid .tile { height: auto; padding: 4px; display: flex; flex-direction: column; gap: 4px; }
+      #seedGrid .tile canvas { width: 100%; aspect-ratio: 1; background: #1a1d24; border-radius: 2px; }
+      #seedGrid .tile:hover { border-color: #2cc9ff; }
     </style>
   </head>
   <body>

@@ -2,6 +2,7 @@
 paths:
   - "app/src/heightmap.wgsl"
   - "app/src/uniforms.js"
+  - "app/src/main.js"
   - "app/tests/**"
 ---
 # Thema: WGSL-Compute & Uniform-Layout
@@ -16,6 +17,7 @@ paths:
 - NICHT den Böschungskegel mit konstanter Neigung ins Unendliche laufen lassen, sondern die Neigung mit dem Abstand bis `SLOPE_MAX` steigern (`BANK_CURVE`). Sonst kappt er Gipfel und Seen 100 m neben der Straße, bei flachem `roadSlope` die halbe Karte.
 - NICHT Noise mit `fract(sin(großes Argument))` oder mit Float-Seed-Offsets (`seed + 101.3`) hashen, sondern ganzzahlig (`mix32`, `layerKey`). `sin` ist bei großen Argumenten je GPU verschieden genau und Float-Summen können per fma anders runden. Dann ergibt derselbe Seed auf einer anderen GPU ein anderes Terrain.
 - NICHT den Noise-Hash ändern, ohne `SAVE_VERSION` (main.js) hochzuzählen, `tests/noise.mjs` nachzuziehen und die Statistik in `uniforms.js` neu zu messen.
+- NICHT zwischen `writeBuffer`, Dispatch und Readback-Kopie ein `await` setzen (`computeMap`). Seed-Vorschau und Regeneration teilen Uniform- und Storage-Puffer und laufen überlappend; nur die ununterbrochene Folge hält die Queue-Reihenfolge je Pass richtig.
 - NICHT Winkel ± Variation hinterher klemmen, sondern die Variation auf den Abstand zur Grenze begrenzen. Sonst klebt der Winkel an 10° bzw. 60° und der Regler wirkt an den Enden nicht.
 
 ## Layout-Regeln (uniform)

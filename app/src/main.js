@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import { buildPanel } from './ui.js';
+import { buildPanel, seedGrid } from './ui.js';
 import { encodePng } from './png.js';
 import { quantize16, encodeR16, sampleBilinear, resample } from './export.js';
 import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R } from './masks.js';
@@ -139,19 +139,35 @@ async function readBuffer(buf, bytes) {
 
 let terrain128 = new Float32Array(PRE * PRE); // in Metern (→ Plan/Roads.md)
 
-async function generate() {
+// Prepass → Straßennetz → Final-Pass in res² für p (maxH gesetzt); auch für die Seed-Vorschau (→ Plan/Roadmap.md R13).
+// Je Pass laufen writeBuffer, Dispatch und Kopie ohne await dazwischen → zwei Aufrufe dürfen sich überlappen
+async function computeMap(p, res) {
     const t0 = performance.now();
-    params.maxH = autoMaxH(params);
-
     // Prepass: 128² Roh-Terrain (ohne Straßen, mit Rand-Ring; die Randzone sperrt das Routing selbst)
     // → Routing-Daten für roadgen (→ Plan/PresetsAusfahrten.md)
-    encodeUniforms({ ...params, mapSize: MAP, res: PRE, roadCount: 0, clearingCount: 0 },
+    encodeUniforms({ ...p, mapSize: MAP, res: PRE, roadCount: 0, clearingCount: 0 },
         new Float32Array(MAX_ROADS * ROAD_POINTS * 2), new Float32Array(MAX_ROADS * ROAD_POINTS), [], uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(PRE);
-    const pre = await readBuffer(heightBuf, PRE * PRE * 4);
-    let gpuMs = performance.now() - t0; // Dispatch + Readback: Zeitstempel erst nach mapAsync, sonst nur Submit gemessen
-    for (let i = 0; i < pre.length; i++) terrain128[i] = pre[i] * params.maxH;
+    const terrain = (await readBuffer(heightBuf, PRE * PRE * 4)).map(h => h * p.maxH);
+    const tr = performance.now(); // Dispatch + Readback: Zeitstempel erst nach mapAsync, sonst nur Submit gemessen
+
+    const net = generateRoads(p.seed, MAP, { size: PRE, data: terrain }, p);
+    const tg = performance.now();
+    encodeUniforms({ ...p, mapSize: MAP, res, roadCount: net.count, clearingCount: net.towns.length }, net.points, net.levels, net.towns, uniformsData);
+    queue.writeBuffer(uniformsBuf, 0, uniformsData);
+    dispatch(res);
+    // Kopien laufen in Submit-Reihenfolge nach dem Dispatch
+    const [h, m] = await Promise.all([readBuffer(heightBuf, res * res * 4), readBuffer(roadMaskBuf, res * res * 4)]);
+    return { terrain, net, heights: h, roadMask: m, gpuMs: tr - t0 + performance.now() - tg, roadMs: tg - tr };
+}
+
+async function generate() {
+    const t0 = performance.now();
+    params.maxH = autoMaxH(params);
+    const map = await computeMap(params, RES);
+    ({ terrain: terrain128, heights, roadMask } = map);
+    const { points: roads, levels, count, nodes, towns } = map.net;
 
     // Prepass-Konsole-Check (→ Plan/Roads.md S1): Min/Max ≈ Final-Pass
     let pMn = Infinity, pMx = -Infinity;
@@ -160,21 +176,10 @@ async function generate() {
         if (h > pMx) pMx = h;
     }
     console.log(`Prepass 128²: min ${pMn.toFixed(1)} m · max ${pMx.toFixed(1)} m`);
-
-    const tr = performance.now();
-    const { points: roads, levels, count, nodes, towns } = generateRoads(params.seed, MAP, { size: PRE, data: terrain128 }, params);
-    const roadMs = performance.now() - tr;
-    console.log(`Road network: ${towns.length} towns · ${nodes.filter(n => n.exit).length} exits · ${count} roads · ${roadMs.toFixed(0)} ms`);
-    const tg = performance.now();
-    encodeUniforms({ ...params, mapSize: MAP, res: RES, roadCount: count, clearingCount: towns.length }, roads, levels, towns, uniformsData);
-    queue.writeBuffer(uniformsBuf, 0, uniformsData);
-    dispatch(RES);
-    // Kopien laufen in Submit-Reihenfolge nach dem Dispatch
-    [heights, roadMask] = await Promise.all([readBuffer(heightBuf, RES * RES * 4), readBuffer(roadMaskBuf, RES * RES * 4)]);
-    gpuMs += performance.now() - tg;
+    console.log(`Road network: ${towns.length} towns · ${nodes.filter(n => n.exit).length} exits · ${count} roads · ${map.roadMs.toFixed(0)} ms`);
 
     logStats(roads, levels, count);
-    computeSlope();
+    ({ slope, relief } = slopeRelief(heights, RES, params.maxH));
     refreshView();
     if (terrain) {
         scene.remove(terrain);
@@ -184,7 +189,7 @@ async function generate() {
     scene.add(terrain);
     const totalMs = performance.now() - t0;
     console.log(`Regeneration: ${totalMs.toFixed(0)} ms`);
-    panel.status(`GPU ${gpuMs.toFixed(0)} ms · Roads ${roadMs.toFixed(0)} ms · Total ${totalMs.toFixed(0)} ms`);
+    panel.status(`GPU ${map.gpuMs.toFixed(0)} ms · Roads ${map.roadMs.toFixed(0)} ms · Total ${totalMs.toFixed(0)} ms`);
 }
 
 function dispatch(res) {
@@ -312,30 +317,37 @@ function terrainColor(out, o, hm, m, s, rel) {
     out[o + 2] = b;
 }
 
-// Aus dem Readback, einmal pro Regeneration (Kanten geclamped):
-// slope = Hangneigung |∇h| in m/m (zentrale Differenzen); relief = Höhe − Mittel im Abstand RELIEF_R in m
+// Aus dem Readback h (n², 0–1), einmal pro Regeneration (Kanten geclamped):
+// slope = Hangneigung |∇h| in m/m (zentrale Differenzen); relief = Höhe − Mittel im Abstand RELIEF_M in m
 // (> 0 Kuppe, < 0 Mulde) → Farbe heller/dunkler, macht flache Hügel lesbar
-const RELIEF_R = 24; // px ≈ 9 m
+// vereinfacht: eigene Neigung statt masks.js – Zusammenführen mit R11 (→ Plan/Roadmap.md)
+const RELIEF_M = 24 * MAP / RES; // ≈ 9 m (24 px bei 1024²)
 let slope = new Float32Array(RES * RES);
 let relief = new Float32Array(RES * RES);
-function computeSlope() {
-    const px = MAP / RES, k = params.maxH / (2 * px), H = params.maxH;
-    const at = (x, y) => heights[Math.min(Math.max(y, 0), RES - 1) * RES + Math.min(Math.max(x, 0), RES - 1)];
-    for (let y = 0; y < RES; y++) for (let x = 0; x < RES; x++) {
+function slopeRelief(h, n, maxH) {
+    const px = MAP / n, k = maxH / (2 * px), r = Math.max(Math.round(RELIEF_M / px), 1);
+    const s = new Float32Array(n * n), rel = new Float32Array(n * n);
+    const at = (x, y) => h[Math.min(Math.max(y, 0), n - 1) * n + Math.min(Math.max(x, 0), n - 1)];
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
         const gx = (at(x + 1, y) - at(x - 1, y)) * k;
         const gy = (at(x, y + 1) - at(x, y - 1)) * k;
-        slope[y * RES + x] = Math.hypot(gx, gy);
-        const avg = (at(x - RELIEF_R, y) + at(x + RELIEF_R, y) + at(x, y - RELIEF_R) + at(x, y + RELIEF_R)) / 4;
-        relief[y * RES + x] = (at(x, y) - avg) * H;
+        s[y * n + x] = Math.hypot(gx, gy);
+        const avg = (at(x - r, y) + at(x + r, y) + at(x, y - r) + at(x, y + r)) / 4;
+        rel[y * n + x] = (at(x, y) - avg) * maxH;
+    }
+    return { slope: s, relief: rel };
+}
+
+// Farbrampe → RGBA-Pixel (Alpha 255) für n² Werte
+function colorize(d, n, h, m, s, rel, maxH) {
+    for (let i = 0; i < n * n; i++) {
+        terrainColor(d, i * 4, h[i] * maxH, m[i], s[i], rel[i]);
+        d[i * 4 + 3] = 255;
     }
 }
 
 function updatePreview() {
-    const d = pimg.data;
-    for (let i = 0; i < RES * RES; i++) {
-        terrainColor(d, i * 4, heights[i] * params.maxH, roadMask[i], slope[i], relief[i]);
-        d[i * 4 + 3] = 255;
-    }
+    colorize(pimg.data, RES, heights, roadMask, slope, relief, params.maxH);
     pctx.putImageData(pimg, 0, 0);
 }
 
@@ -496,6 +508,19 @@ window.addEventListener('keydown', e => {
     e.preventDefault();
 });
 
+// Seed-Vergleich (→ Plan/Roadmap.md R13): dieselbe Pipeline wie die große Map (Prepass 128² → Netz → Final-Pass),
+// Final-Pass nur THUMB² — bei 128² (3 m/px) zerfallen 4-m-Straßen in Punkte
+const THUMB = 256;
+const COMPARE_COUNT = 12;
+async function drawThumb(seed, canvas) {
+    const p = { ...params, seed, maxH: autoMaxH(params) };
+    const m = await computeMap(p, THUMB);
+    const { slope: s, relief: rel } = slopeRelief(m.heights, THUMB, p.maxH);
+    const ctx = canvas.getContext('2d'), img = ctx.createImageData(THUMB, THUMB);
+    colorize(img.data, THUMB, m.heights, m.roadMask, s, rel, p.maxH);
+    ctx.putImageData(img, 0, 0);
+}
+
 // Export-Auflösung (→ Plan/Roadmap.md R7): RES = Original 1:1, 2ⁿ+1 = Unreal-Landscape-Größen (resample)
 const EXPORT_SIZES = [RES, RES / 2 + 1, RES + 1, 2 * RES + 1];
 let exportRes = RES;
@@ -514,6 +539,11 @@ const panel = buildPanel(params, {
     save: saveSettings,
     load: () => loadInput.click(),
     link: copyLink,
+    compare: () => seedGrid(THUMB, COMPARE_COUNT, params.seed, drawThumb, s => {
+        params.seed = s;
+        panel.refresh();
+        scheduleGenerate();
+    }),
     exportSizes: EXPORT_SIZES,
     exportSize: n => { exportRes = n; },
     exports: {

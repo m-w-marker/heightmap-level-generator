@@ -85,7 +85,48 @@ function menu(id, placeholder, items, pick) {
     return s;
 }
 
-// cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), exports: {Label: fn},
+const randomSeed = () => 1 + Math.floor(Math.random() * 99999);
+
+// Seed-Vergleich (→ Plan/Roadmap.md R13): Overlay mit count Kacheln (erste = aktueller Seed), draw(seed, canvas) async
+// nacheinander; Klick → pick(seed); „More“ würfelt neu, Esc / ✕ schließt
+export function seedGrid(size, count, current, draw, pick) {
+    const grid = el('div', { className: 'grid' });
+    let batch = 0;
+    const close = () => {
+        overlay.remove();
+        removeEventListener('keydown', esc);
+    };
+    const esc = e => { if (e.key === 'Escape') close(); };
+    async function fill() {
+        const my = ++batch; // „More“ während des Zeichnens → alte Runde bricht ab
+        const seeds = [current, ...Array.from({ length: count - 1 }, randomSeed)];
+        const tiles = seeds.map(s => {
+            const c = el('canvas', { width: size, height: size });
+            const b = el('button', { className: 'tile', title: `Use seed ${s}` }, c, el('span', { textContent: s === current ? `${s} (current)` : s }));
+            b.addEventListener('click', () => { close(); pick(s); });
+            return [s, c, b];
+        });
+        grid.replaceChildren(...tiles.map(t => t[2]));
+        for (const [s, c] of tiles) {
+            if (my !== batch || !overlay.isConnected) return;
+            await draw(s, c);
+        }
+    }
+    const btn = (text, title, fn) => {
+        const b = el('button', { textContent: text, title });
+        b.addEventListener('click', fn);
+        return b;
+    };
+    const overlay = el('div', { id: 'seedGrid' },
+        el('div', { className: 'bar' }, el('span', { textContent: 'Compare seeds (current settings) — click a map to use its seed' }),
+            btn('More', 'New random seeds', fill), btn('✕', 'Close (Esc)', close)),
+        grid);
+    document.body.append(overlay);
+    addEventListener('keydown', esc);
+    fill();
+}
+
+// cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), compare(), exports: {Label: fn},
 //     exportSizes: [px], exportSize(px), regenerate()
 // → { guis: {Tab: GUI}, refresh(), status(text), busy(on) }
 export function buildPanel(params, cb) {
@@ -101,10 +142,11 @@ export function buildPanel(params, cb) {
         return b;
     };
     const dice = button('🎲', 'Random seed', () => {
-        params.seed = 1 + Math.floor(Math.random() * 99999);
+        params.seed = randomSeed();
         seed.value = params.seed;
         cb.change();
     });
+    const compare = button('⊞', 'Compare seeds: previews of random seeds, click one to use it', cb.compare);
     const regen = button('↻', 'Regenerate', cb.regenerate);
     const link = button('Link', 'Copy a link with all settings (same map in any browser)', async () => {
         try {
@@ -122,7 +164,7 @@ export function buildPanel(params, cb) {
     size.addEventListener('change', () => cb.exportSize(+size.value));
     const status = el('div',{ id: 'status', className: 'row', title: 'Last generation: GPU passes incl. readback, road network, total' });
     const toolbar = el('div', { className: 'toolbar' },
-        el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice, regen),
+        el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice, compare, regen),
         el('div', { className: 'row' }, menu('preset', 'Preset…', cb.presets, cb.preset),
             button('Save', 'Save all settings as JSON', cb.save), button('Load', 'Load settings from JSON', cb.load), link),
         el('div', { className: 'row' }, menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]()), size),
