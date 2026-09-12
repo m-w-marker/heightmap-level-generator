@@ -58,7 +58,7 @@ const CLEARING_BANK = 0.268; // tan 15°: Lichtungsrand startet flacher als die 
 const CLEARING_WOBBLE = 0.5; // Radius ±50 % per Noise → unregelmäßiger Umriss statt Kreis
 const CLEARING_WAVE = 9.0;   // m Wellenlänge des Umriss-Noise (≈ Radius → 2–4 Ausbuchtungen je Lichtung)
 const CLEARING_KEEP = 0.5;   // m Restwelligkeit im Kern → nicht spiegelglatt
-const TOWN_FADE = 4.0;       // m weicher Rand der townMask hinter dem Lichtungs-Umriss
+const TOWN_FADE = 4.0;       // m weicher Rand der townMask hinter dem Lichtungs-Umriss (= TOWN_FADE in masks.js)
 
 // Punkt / Ort = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)

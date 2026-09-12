@@ -1,5 +1,5 @@
 // Masken (→ Plan/Roadmap.md R8): Ebene = Neigung 0 / Normale oben; Rampe = bekannter Winkel; Kamm hell, Mulde dunkel
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN, flowScale, flowBytes } from '../src/masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE } from '../src/masks.js';
 
 let fail = 0;
 function check(cond, msg) {
@@ -65,5 +65,14 @@ for (const sign of [1, -1]) {
     check(flowScale(new Float32Array(10)) > 0, 'Flow: leere Map → Skala > 0 (kein 0/0)');
 }
 
+// Flächen-Masken: Anteil 0–1 → 0–255 geklemmt, Schwelle 128 = halb; Wasser 0 am Ufer, linear bis WATER_FADE Tiefe
+{
+    const u = unitBytes([-1, 0, 0.5, 1, 2]);
+    check(u.join() === '0,0,128,255,255', `Flächen-Maske: ${u.join()}`);
+    const lv = 15, depth = [-1, 0, WATER_FADE / 4, WATER_FADE * 3 / 4, WATER_FADE, 5]; // ¼, ¾: fern der Rundungsgrenze
+    const w = waterBytes(depth.map(d => (lv - d) / maxH), depth.map(() => lv), maxH);
+    check(w.join() === '0,0,64,191,255,255', `Water mask trocken/Ufer/¼/¾/voll: ${w.join()}`);
+}
+
 if (fail) process.exit(1);
-console.log('Masken: OK — Ebene 0° / (128,128,255), Rampe 30° in x und y (DirectX-/OpenGL-Normale), Krümmung Rampe 0, Kuppe hell, Mulde dunkel, Flow log/p99');
+console.log('Masken: OK — Ebene 0° / (128,128,255), Rampe 30° in x und y (DirectX-/OpenGL-Normale), Krümmung Rampe 0, Kuppe hell, Mulde dunkel, Flow log/p99, Flächen-/Water mask');

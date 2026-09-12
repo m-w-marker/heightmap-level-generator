@@ -65,8 +65,15 @@ export function curvatureScale(c) {
 // log → Rinnen und breite Täler beide sichtbar (linear wären nur die Talböden hell)
 export const flowScale = f => Math.max(Float32Array.from(f).sort()[Math.floor(0.99 * (f.length - 1))], 1e-6);
 
+// Flächen-Masken (→ Plan/StadtStrassenMasken.md): weiche Kante statt Schwarz-Weiß, harte Grenze = Schwelle 128
+export const WATER_FADE = 0.4; // m Wassertiefe bis voll: Water mask und Deckkraft des Wasser-Meshes
+export const TOWN_FADE = 4;    // m weicher Rand der Town mask = TOWN_FADE in heightmap.wgsl (Layout-Test prüft)
+
 // --- 8 Bit für den Export ---
 const byte = v => Math.round(Math.min(Math.max(v, 0), 1) * 255);
+export const unitBytes = f => Uint8Array.from(f, byte); // Anteil 0–1 (Road/Town mask)
+// h 0–1, level = Wasserspiegel m je Pixel → 0 am Ufer, 255 ab WATER_FADE Tiefe
+export const waterBytes = (h, level, maxH) => Uint8Array.from(h, (v, i) => byte((level[i] - v * maxH) / WATER_FADE));
 export const flowBytes = (f, scale) => Uint8Array.from(f, v => byte(Math.log1p(Math.max(v, 0)) / Math.log1p(scale)));
 export const slopeBytes = deg => Uint8Array.from(deg, d => byte(d / 90));
 export const curvatureBytes = (c, scale) => Uint8Array.from(c, v => byte(0.5 + v / (2 * scale)));

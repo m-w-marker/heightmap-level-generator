@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, RIVERS_OFFSET, UNIFORM_FLOATS, EROSION_FIELDS, EROSION_FLOATS, grids, RES_MIN, RES_MAX, encodeUniforms, encodeErosion } from '../src/uniforms.js';
 import { MAX_ROADS, ROAD_POINTS, MAX_TOWNS } from '../src/roadgen.js';
 import { MAX_RIVERS, RIVER_POINTS, RIVER_WET } from '../src/hydro.js';
+import { TOWN_FADE } from '../src/masks.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const wgsl = readFileSync(join(root, 'src', 'heightmap.wgsl'), 'utf8');
@@ -47,9 +48,9 @@ for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS
     const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)u;`));
     check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
 }
-{
-    const m = wgsl.match(/const RIVER_WET\s*=\s*([\d.]+);/);
-    check(!!m && Number(m[1]) === RIVER_WET, `WGSL const RIVER_WET == ${RIVER_WET} (ist ${m ? m[1] : '–'})`);
+for (const [name, val] of [['RIVER_WET', RIVER_WET], ['TOWN_FADE', TOWN_FADE]]) {
+    const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*([\\d.]+);`));
+    check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
 }
 check(/lakeN = u32\(u\.params\.lakeRes\)/.test(wgsl) && /lakes\[u32\(c\.y\) \* lakeN/.test(wgsl) && /n = i32\(u\.params\.erosionRes\)/.test(wgsl)
     && /rL = mix\(a\.z, b\.z/.test(wgsl) && /rW = mix\(a\.w, b\.w/.test(wgsl), 'WGSL: See-Feld mit lakeRes, erosionDelta mit erosionRes, Fluss-Spiegel .z, halbe Breite .w');

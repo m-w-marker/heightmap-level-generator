@@ -5,7 +5,7 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildPanel, seedGrid } from './ui.js';
 import { encodePng } from './png.js';
 import { quantize16, encodeR16, sampleBilinear, resample, TARGETS, exportSizes, engineImport, flipRows } from './export.js';
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes } from './masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, TOWN_FADE } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, UNIFORM_FLOATS, grids, autoMaxH } from './uniforms.js';
@@ -518,7 +518,6 @@ function buildTerrainMesh() {
 // vereinfacht: nicht im glTF-Export (nur Terrain)
 const waterMat = new THREE.MeshStandardMaterial({ color: 0x3d78b0, roughness: 0.2, metalness: 0, transparent: true, opacity: 0.78, vertexColors: true });
 const WATER_SINK = 0.05; // m unter dem Gelände für trockene Randecken
-const WATER_FADE = 0.4;  // m Wassertiefe bis volle Deckkraft
 let waterMesh = null;
 // Bei 1280 m sind das 1,6 Mio. Ecken → direkt in die Puffer schreiben (keine Array-Literale je Ecke/Viereck), Normale
 // konstant nach oben statt computeVertexNormals (Wasser ist fast eben): 630 → ~100 ms (→ Plan/Aufloesung.md)
@@ -760,6 +759,9 @@ const panel = buildPanel(params, {
         'Normal map PNG': () => exportMask('normal'),
         'Curvature mask PNG': () => exportMask('curvature'),
         'Flow map PNG': exportFlow,
+        'Road mask PNG': () => exportArea('road'),
+        'Town mask PNG': () => exportArea('town'),
+        'Water mask PNG': () => exportArea('water'),
         'Metadata JSON': exportMeta,
         '3D mesh glTF (.glb)': exportGlb,
         'Heightmap PNG (8-bit preview)': exportPng,
@@ -841,18 +843,20 @@ async function exportR16() {
     download(new Blob([encodeR16(quantize16(onGrid(src.heights, src.N, n)))], { type: 'application/octet-stream' }), `heightmap-${params.seed}-${n}.r16`);
 }
 
+// Wasser = Meer, Seen, Flüsse: Spiegel je Pixel resamplen, nicht die 0-codierten Rohwerte (0 = Meer) (→ Plan/Fluesse.md)
+const levelsOnGrid = (src, n) => src.water.some(w => w > 0)
+    ? onGrid(Float32Array.from(src.water, w => spiegel(w, params.waterLevel)), src.N, n) : new Float64Array(n * n).fill(params.waterLevel); // f64: exakt waterLevel wie vorher
+
 // Splatmap RGBA: R Straße · G Fels · B Wasser + Ufer (bis zur Sand-Grenze der Farbrampe) · A Rest (Gras);
 // Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md). Eingaben resamplen, nicht RGBA → Summe bleibt 255.
-// Wasser = Meer, Seen, Flüsse: Spiegel je Pixel resamplen, nicht die 0-codierten Rohwerte (0 = Meer) (→ Plan/Fluesse.md)
 async function exportSplatmap() {
     const src = await exportSource(), n = exportN(src.N), N = src.N;
-    const hs = onGrid(src.heights, N, n), ms = onGrid(src.roadMask, N, n), ss = onGrid(src.slope, N, n);
-    const ws = src.water.some(w => w > 0) ? onGrid(Float32Array.from(src.water, w => spiegel(w, params.waterLevel)), N, n) : null;
+    const hs = onGrid(src.heights, N, n), ms = onGrid(src.roadMask, N, n), ss = onGrid(src.slope, N, n), ws = levelsOnGrid(src, n);
     const px = new Uint8Array(n * n * 4), shore = STOPS[1][0];
     for (let i = 0; i < n * n; i++) {
         const h = hs[i] * params.maxH;
         const road = roadWeight(ms[i]);
-        const wet = Math.min(Math.max(1 - (h - (ws ? ws[i] : params.waterLevel)) / shore, 0), 1);
+        const wet = Math.min(Math.max(1 - (h - ws[i]) / shore, 0), 1);
         const water = (1 - road) * wet;
         const rock = (1 - road) * (1 - wet) * rockWeight(ss[i]); // (1 − wet), nicht (1 − water): sonst Summe > 1
         const R = Math.floor(road * 255), G = Math.floor(rock * 255), B = Math.floor(water * 255);
@@ -881,6 +885,19 @@ async function exportMask(kind) {
         px = kind === 'slope' ? slopeBytes(slopeDeg(g)) : normalBytes(normals(g), TARGETS[exp.target].normal === 'opengl');
     }
     download(await encodePng(n, n, px, kind === 'normal' ? 4 : 1, 8), `${kind}-${params.seed}-${n}.png`);
+}
+
+// Road/Town/Water mask 8 Bit linear, weiche Kante, harte Grenze = Schwelle 128 (→ Plan/StadtStrassenMasken.md).
+// Road = roadWeight wie der R-Kanal der Splatmap, ohne deren Vorrang; Water = Tiefe unter dem Spiegel je Pixel
+async function exportArea(kind) {
+    const src = await exportSource(), n = exportN(src.N);
+    let px;
+    if (kind === 'water') px = waterBytes(onGrid(src.heights, src.N, n), levelsOnGrid(src, n), params.maxH);
+    else {
+        const f = onGrid(kind === 'road' ? src.roadMask : src.townMask, src.N, n);
+        px = unitBytes(kind === 'road' ? f.map(roadWeight) : f);
+    }
+    download(await encodePng(n, n, px, 1, 8), `${kind}-mask-${params.seed}-${n}.png`);
 }
 
 // Flow-Map der aktuellen Einstellungen auf dem Export-Gitter: Simulation neu (deterministisch → dieselbe wie bei der
@@ -935,6 +952,9 @@ async function exportMeta() {
                 : 'tangent space, DirectX / Unreal ("green down"): n = rgb / 255 * 2 - 1, R = +column, G = +row, B = up; flip G for OpenGL / Blender',
             curvature: `height - mean height within ±${CURV_R} m; value = 128 + dev / curvatureScale * 127.5, clamped; curvatureScale = 99th percentile of |dev| of this map (bright = ridge, dark = hollow)`,
             flow: 'where rain water ran in the erosion simulation (sum of depth * speed, before roads); value = 255 * log(1 + flow) / log(1 + flowScale), clamped; flowScale = 99th percentile of this map; bright = gullies and valley floors',
+            road: `8-bit gray, 255 = road surface (${params.roadWidth} m wide), soft 1 m edge to 0; hard edge = value >= 128; same as splatmap R without its priorities; empty when townCount = 0`,
+            town: `8-bit gray, 255 = town clearing (irregular outline, radius ${params.clearingRadius} m ±50 %), fading to 0 over ${TOWN_FADE} m; hard edge = value >= 128; roads not included; empty when townCount = 0 or clearingRadius = 0`,
+            water: `8-bit gray, sea + lakes + rivers: value = 255 * clamp(water depth / ${WATER_FADE} m, 0, 1), 0 at the shore; value >= 128 = more than ${WATER_FADE / 2} m deep`,
             import: 'masks are linear data: import without sRGB (Unreal: Masks / Linear Color; normal map: Normalmap compression)',
         },
         settings: pickParams(params),
