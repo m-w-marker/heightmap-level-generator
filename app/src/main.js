@@ -14,12 +14,23 @@ import { createErosion } from './erosion.js';
 import { createWalk } from './walk.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
+function noWebGPU(detail) {
+    document.body.innerHTML = `<pre style="color:#f88;background:#0e1116;margin:0;height:100%;padding:20px;white-space:pre-wrap">`
+        + `WebGPU not available${detail ? ':\n' + detail : '.'}\n\n`
+        + `This tool needs a browser with WebGPU (desktop Chrome/Edge 113+, Safari 26+, Firefox 141+ on Windows)\n`
+        + `and a secure context (https or localhost).</pre>`;
+}
 const renderer = new WebGPURenderer({ antialias: true });
 try {
     await renderer.init();
 } catch (e) {
-    document.body.innerHTML = `<pre style="color:#f88;padding:20px">WebGPU not available:\n${e.message}</pre>`;
+    noWebGPU(e.message);
     throw e;
+}
+// ohne WebGPU fällt three still auf WebGL2 zurück, dann fehlt backend.device für die Compute-Shader
+if (!renderer.backend.isWebGPUBackend) {
+    noWebGPU();
+    throw new Error('WebGPU not available (WebGL fallback)');
 }
 
 renderer.setPixelRatio(window.devicePixelRatio);

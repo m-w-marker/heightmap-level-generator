@@ -29,6 +29,7 @@ Preview-Pixel als Farbtextur) + Wasserspiegel-Mesh. Raster aus `grids(mapSize)` 
   Ein Pixel bleibt 0,39 m, die Raster wachsen mit der Map.
 
 ## Pitfalls (three r186 / WebGPU)
+- NICHT auf `renderer.init()` allein verlassen: ohne WebGPU fällt three still auf WebGL2 zurück → `renderer.backend.isWebGPUBackend` prüfen.
 - `await renderer.init()` vor Nutzung. Device: `renderer.backend.device`, Queue: `device.queue` (`renderer.gpu` gibt es nicht).
 - Workgroup max. 256 Threads → 16×16.
 - Readback: Staging `MAP_READ` + `copyBufferToBuffer` + `mapAsync` + `getMappedRange().slice(0)`.
