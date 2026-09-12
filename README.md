@@ -1,7 +1,7 @@
 # Heightmap Level Generator
 
 Procedural heightmap & terrain generator for game levels, running on WebGPU compute shaders (WGSL) in the browser.
-Generates a heightmap at 0.39 m per pixel (1024×1024 for the default 400 m map, 2560×2560 at 1000 m) with roads, towns, cliffs, hills,
+Generates a heightmap at 0.5 m per pixel (1024×1024 for the default 512 m map, 2560×2560 at 1280 m) with roads, towns, cliffs, hills,
 mountains, erosion, rivers and lakes inside a closed border ring. Tweak everything live, walk through it and export
 heightmap, masks and mesh for your engine.
 
@@ -21,8 +21,8 @@ heightmap, masks and mesh for your engine.
   of the border ring; hollows fill up to their outflow and become lakes with their own water level; a real water
   surface in 3D (*River valley* preset)
 - **Border ring**: closed raised terrain around the map edge that hides the horizon; exit roads end at its foot
-- **Map size**: 200–1000 m; all meter values keep their meaning, a larger map shows more of the same landscape at the
-  same detail (all grids grow with it; ~1 s per generation at 1000 m)
+- **Map size**: 256–1280 m in 64 m steps; all meter values keep their meaning, a larger map shows more of the same landscape at the
+  same detail (all grids grow with it; ~1 s per generation at 1280 m)
 - **Auto height range**: `maxH` is derived from the settings, nothing gets clipped
 
 **Roads**
@@ -44,7 +44,7 @@ heightmap, masks and mesh for your engine.
 - **Presets**: Rolling hills, Pasture, Mountains, Canyon / Plateaus, Lakes, Eroded mountains, River valley, plus defaults
 - **Save / Load**: all settings incl. seed as JSON; every JSON in `app/presets/` shows up in the preset list
 
-**Export** (native size = 0.39 m per pixel, or 513 / 1025 / 2049 px vertex grids for Unreal landscapes)
+**Export** (native size = 0.5 m per pixel, or 513 / 1025 / 2049 px vertex grids for Unreal landscapes; 1025 on the default map = exactly 0.5 m)
 - Heightmap as 16-bit PNG and as RAW `.r16` (~2 mm steps), plus an 8-bit preview PNG
 - Splatmap RGBA (R road · G rock · B water/shore · A grass, weights sum to 255)
 - Masks: slope, normal map (DirectX / Unreal), curvature, flow map (where the water ran)
