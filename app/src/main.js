@@ -9,6 +9,7 @@ import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvat
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, UNIFORM_FLOATS, autoMaxH } from './uniforms.js';
+import { createWalk } from './walk.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
 const renderer = new WebGPURenderer({ antialias: true });
@@ -397,6 +398,16 @@ function buildTerrainMesh() {
     return new THREE.Mesh(geo, terrainMat);
 }
 
+// Höhe des angezeigten Meshes (Dreiecke wie oben) in m; der 1024²-Readback weicht an Böschungen ±12 cm davon ab
+function meshHeight(x, z) {
+    const p = terrain.geometry.attributes.position.array;
+    const fi = Math.min(Math.max((x / MAP + 0.5) * (TN - 1), 0), TN - 1), fj = Math.min(Math.max((z / MAP + 0.5) * (TN - 1), 0), TN - 1);
+    const i = Math.min(Math.floor(fi), TN - 2), j = Math.min(Math.floor(fj), TN - 2), s = fi - i, t = fj - j;
+    const y = (i, j) => p[(j * TN + i) * 3 + 1];
+    const a = y(i, j), b = y(i + 1, j), c = y(i, j + 1), d = y(i + 1, j + 1);
+    return s + t <= 1 ? a + (b - a) * s + (c - a) * t : d + (c - d) * (1 - s) + (b - d) * (1 - t);
+}
+
 // --- M5: GUI + Export (→ Plan/Build.md M5) ---
 // Debounce + Coalescing: Slider-Drags triggern nur eine Regeneration, keine Überlappung
 let genTimer = 0;
@@ -540,6 +551,7 @@ const panel = buildPanel(params, {
     save: saveSettings,
     load: () => loadInput.click(),
     link: copyLink,
+    walk: () => walk.start(),
     compare: () => seedGrid(THUMB, COMPARE_COUNT, params.seed, drawThumb, s => {
         params.seed = s;
         panel.refresh();
@@ -708,8 +720,15 @@ function exportMeta() {
 
 if (!applyHash()) runGenerate();
 
-renderer.setAnimationLoop(() => {
-    controls.update();
+const walk = createWalk(camera, renderer.domElement, controls, meshHeight, MAP / 2);
+if (import.meta.env.DEV) window.dbg.walk = walk;
+
+let lastT = 0;
+renderer.setAnimationLoop(t => {
+    const dt = Math.min((t - lastT) / 1000, 0.1); // Tab im Hintergrund → kein Sprung
+    lastT = t;
+    if (walk.active) walk.update(dt);
+    else controls.update(); // update() prüft enabled nicht und würde lookAt(target) erzwingen
     renderer.render(scene, camera);
 });
 

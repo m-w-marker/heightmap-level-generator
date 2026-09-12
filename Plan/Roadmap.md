@@ -80,7 +80,9 @@ R18 README (ganz am Ende)
 Nachtrag 2 (User: Kreise noch sichtbar → organisch): Radius per Noise ±50 %, weiche Sättigung `e·tanh(Δ/e)`, 0,5 m Restwelle;
 headless: von oben keine Kreise mehr (auch Radius 15 im Berg-Terrain), Kern-Spanne 4,6–6,2 m → 0,1–1,4 m
 - [x] R13 Seed-Vergleich (Button ⊞: 12 Kacheln, erste = aktueller Seed, More / Esc; dieselbe Pipeline `computeMap` wie die große Map, Final-Pass 256²; headless: 12 Kacheln 254 ms, Kachel vs. große Map Ø 0,7/255 und Straßen 100 % deckungsgleich (fremder Seed 15,5/255 · 4 %), Klick übernimmt Seed + URL, große Map bitgleich zu vorher) — geprüft am 2026-09-12
-- [ ] R14 Walk-Modus — geprüft am
+- [x] R14 Walk-Modus (`src/walk.js`, Button 🚶: Start am Orbit-Ziel, Maus/WASD/Pfeile, Shift = rennen 15 m/s, Esc zurück;
+  Höhe aus dem angezeigten Mesh; headless Favorite + Mountains: 16 m auf der Straße, Augenhöhe 1,700 m konstant, Orbit-Kamera nach Esc
+  identisch) — geprüft am 2026-09-12
 - [ ] R15 Erosion + Flow-Map — geprüft am
 - [ ] R16 Flüsse/Seen — geprüft am
 - [ ] R17 Map-Größe — geprüft am

@@ -126,7 +126,7 @@ export function seedGrid(size, count, current, draw, pick) {
     fill();
 }
 
-// cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), compare(), exports: {Label: fn},
+// cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), walk(), compare(), exports: {Label: fn},
 //     exportSizes: [px], exportSize(px), regenerate()
 // → { guis: {Tab: GUI}, refresh(), status(text), busy(on) }
 export function buildPanel(params, cb) {
@@ -148,6 +148,7 @@ export function buildPanel(params, cb) {
     });
     const compare = button('⊞', 'Compare seeds: previews of random seeds, click one to use it', cb.compare);
     const regen = button('↻', 'Regenerate', cb.regenerate);
+    const walk = button('🚶', 'Walk on the terrain: mouse = look, WASD / arrows = move, Shift = run, Esc = back', cb.walk);
     const link = button('Link', 'Copy a link with all settings (same map in any browser)', async () => {
         try {
             await cb.link();
@@ -164,7 +165,7 @@ export function buildPanel(params, cb) {
     size.addEventListener('change', () => cb.exportSize(+size.value));
     const status = el('div',{ id: 'status', className: 'row', title: 'Last generation: GPU passes incl. readback, road network, total' });
     const toolbar = el('div', { className: 'toolbar' },
-        el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice, compare, regen),
+        el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice, compare, regen, walk),
         el('div', { className: 'row' }, menu('preset', 'Preset…', cb.presets, cb.preset),
             button('Save', 'Save all settings as JSON', cb.save), button('Load', 'Load settings from JSON', cb.load), link),
         el('div', { className: 'row' }, menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]()), size),
