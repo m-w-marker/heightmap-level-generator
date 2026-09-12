@@ -12,6 +12,7 @@ import { encodeUniforms, UNIFORM_FLOATS, grids, autoMaxH } from './uniforms.js';
 import { hydrology, RIVER_WET } from './hydro.js';
 import { createErosion } from './erosion.js';
 import { createWalk } from './walk.js';
+import { createTerrainMaterial } from './material.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
 function noWebGPU(detail) {
@@ -452,6 +453,10 @@ function makeTerrainTex() {
 }
 let terrainTex = makeTerrainTex();
 const terrainMat = new THREE.MeshStandardMaterial({ map: terrainTex, roughness: 1, metalness: 0 });
+// Ansicht, nicht in Save/Link (hängt am Gerät): Textures aus = Farbmaterial (schwache GPUs, Vergleich)
+const view = { textures: true };
+const autoMat = createTerrainMaterial(terrainTex);
+const terrainMaterial = () => view.textures ? autoMat.mat : terrainMat;
 
 // Material-Maske RES² für das Auto-Material (→ Plan/Texturierung.md): Daten, kein sRGB, ohne Mips; Texel wie terrainTex
 let maskTex = null;
@@ -477,6 +482,7 @@ function resizeView(g) {
     terrainTex = makeTerrainTex();
     terrainMat.map = terrainTex;
     terrainMat.needsUpdate = true;
+    autoMat.setColorTex(terrainTex);
 }
 
 function buildTerrainMesh() {
@@ -508,7 +514,7 @@ function buildTerrainMesh() {
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     geo.computeVertexNormals();
-    return new THREE.Mesh(geo, terrainMat);
+    return new THREE.Mesh(geo, terrainMaterial());
 }
 
 // Wasserspiegel als eigenes Mesh (→ Plan/Fluesse.md): Vertex-Gitter wie das Terrain, y = Spiegel des Pixels; nur Dreiecke
@@ -768,6 +774,12 @@ const panel = buildPanel(params, {
     regenerate: runGenerate,
 });
 panel.guis.World.add(params, 'maxH').name('Max height (auto, m)').decimals(1).disable().listen();
+{
+    const f = panel.guis.Material.addFolder('View');
+    const c = f.add(view, 'textures').name('Textures').onChange(() => { if (terrain) terrain.material = terrainMaterial(); });
+    c.domElement.title = 'Real ground textures up close (grass, rock, gravel, sand, snow, road); off = the flat color map, lighter on weak GPUs. Not saved.';
+    c.domElement.dataset.key = 'textures';
+}
 refreshSizes();
 
 function download(blob, name) {
@@ -919,7 +931,9 @@ async function exportFlow() {
 // Das angezeigte Mesh (TN², 1 Unit = 1 m, Mitte im Ursprung) + Farbtextur eingebettet (→ .clinerules/export.md).
 // vereinfacht: immer TN² statt Export-Größe – 2049² wären ~250 MB Puffer im Browser
 async function exportGlb() {
-    const glb = await new GLTFExporter().parseAsync(terrain, { binary: true });
+    // GLTFExporter kennt nur klassische Materialien → Farbmaterial statt Auto-Material (Texturen bleiben im Tool)
+    const m = new THREE.Mesh(terrain.geometry, terrainMat);
+    const glb = await new GLTFExporter().parseAsync(m, { binary: true });
     download(new Blob([glb], { type: 'model/gltf-binary' }), `terrain-${params.seed}.glb`);
 }
 

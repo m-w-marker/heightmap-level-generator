@@ -78,6 +78,7 @@ export const TABS = {
             ['rimWave', 'Ring variation size (m)', 20, 300, 5, 'Wavelength of the height variation along the ring.'],
         ],
     },
+    Material: {}, // Regler folgen mit R11 T4; Ansicht (Textures) hängt main.js an
 };
 
 function el(tag, props = {}, ...kids) {
