@@ -36,8 +36,21 @@ camera.position.set(240, 280, 240);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI / 2 - 0.05;
-controls.minDistance = 40;
-controls.maxDistance = 1200;
+// Kamera, Nebel und Zoomgrenzen je Map-Größe (bei 400 m: Nebel 600–1600, far 4000, Zoom 40–1200, Start 240/280/240);
+// beim ersten Bild und wenn sich mapSize ändert (→ Plan/MapGroesse.md)
+let viewSize = 0;
+function fitView(size) {
+    scene.fog.near = 1.5 * size;
+    scene.fog.far = 4 * size;
+    camera.far = 10 * size;
+    camera.updateProjectionMatrix();
+    controls.minDistance = 0.1 * size;
+    controls.maxDistance = 3 * size;
+    camera.position.set(0.6 * size, 0.7 * size, 0.6 * size);
+    controls.target.set(0, 0, 0);
+    controls.update();
+    viewSize = size;
+}
 // headless-Prüfung: Kamera setzen, Readback lesen
 if (import.meta.env.DEV) window.dbg = { camera, controls, scene, get heights() { return heights; }, get roadMask() { return roadMask; }, get maxH() { return params.maxH; },
     get params() { return params; }, get terrain128() { return terrain128; }, get water() { return water; } };
@@ -50,11 +63,11 @@ scene.add(sun);
 
 // --- M2: Compute-Pipeline + 2D-Preview (→ Plan/Build.md M2) ---
 const RES = 1024;
-const MAP = 400;
 
 const params = {
     // Start = flaches Hügelland mit etwas Wasser (Seed 1337: ~5 %); Presets setzen ihre Terrain-Werte selbst
     seed: 1337,
+    mapSize: 400, // m Kantenlänge; Auflösungen bleiben fest → m/px wächst mit (→ Plan/MapGroesse.md)
     baseLevel: 17.5, // 2,5 m über waterLevel → Senken werden Seen
     hillAmp: 6,
     hillWave: 110,
@@ -180,10 +193,10 @@ const NO_LAKES = new Float32Array(PRE * PRE);
 
 // Roh-Terrain EROSION_RES² nach heightBuf → Erosion → erosion.delta / erosion.flow (→ Plan/Erosion.md)
 function runErosion(p, erode) {
-    encodeUniforms({ ...p, mapSize: MAP, res: EROSION_RES, roadCount: 0, clearingCount: 0, riverCount: 0 }, NO_ROADS, NO_LEVELS, [], null, uniformsData);
+    encodeUniforms({ ...p, res: EROSION_RES, roadCount: 0, clearingCount: 0, riverCount: 0 }, NO_ROADS, NO_LEVELS, [], null, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(EROSION_RES, rawPipeline, rawBind);
-    erosion.run(heightBuf, { ...p, mapSize: MAP }, erode);
+    erosion.run(heightBuf, p, erode);
 }
 
 // (Erosion →) Prepass → Straßennetz → Final-Pass in res² für p (maxH gesetzt); auch für die Seed-Vorschau (→ Plan/Roadmap.md R13).
@@ -194,17 +207,17 @@ async function computeMapNow(p, res) {
     if (erosionOn) runErosion(p, true);
     // Prepass: 128² Roh-Terrain (+ Erosion, ohne Straßen, mit Rand-Ring; die Randzone sperrt das Routing selbst)
     // → Routing-Daten für roadgen (→ Plan/PresetsAusfahrten.md)
-    encodeUniforms({ ...p, mapSize: MAP, res: PRE, roadCount: 0, clearingCount: 0, riverCount: 0, erosionOn }, NO_ROADS, NO_LEVELS, [], null, uniformsData);
+    encodeUniforms({ ...p, res: PRE, roadCount: 0, clearingCount: 0, riverCount: 0, erosionOn }, NO_ROADS, NO_LEVELS, [], null, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(PRE);
     const terrain = (await readBuffer(heightBuf, PRE * PRE * 4)).map(h => h * p.maxH);
     const tr = performance.now(); // Dispatch + Readback: Zeitstempel erst nach mapAsync, sonst nur Submit gemessen
 
     // Flüsse + Seen auf demselben Gelände wie das Routing → Straßen meiden sie und bleiben über dem Spiegel (→ Plan/Fluesse.md)
-    const hydro = p.riverCatchment > 0 ? hydrology({ size: PRE, data: terrain }, MAP, p) : null;
-    const net = generateRoads(p.seed, MAP, { size: PRE, data: terrain }, hydro ? { ...p, wet: hydro.wet, waterAt: hydro.waterAt } : p);
+    const hydro = p.riverCatchment > 0 ? hydrology({ size: PRE, data: terrain }, p.mapSize, p) : null;
+    const net = generateRoads(p.seed, p.mapSize, { size: PRE, data: terrain }, hydro ? { ...p, wet: hydro.wet, waterAt: hydro.waterAt } : p);
     const tg = performance.now();
-    encodeUniforms({ ...p, mapSize: MAP, res, roadCount: net.count, clearingCount: net.towns.length, riverCount: hydro?.riverCount ?? 0, erosionOn },
+    encodeUniforms({ ...p, res, roadCount: net.count, clearingCount: net.towns.length, riverCount: hydro?.riverCount ?? 0, erosionOn },
         net.points, net.levels, net.towns, hydro?.rivers ?? null, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     queue.writeBuffer(lakesBuf, 0, hydro?.lakes ?? NO_LAKES); // aus → Nullen, sonst stünden die Seen des letzten Laufs
@@ -233,7 +246,7 @@ async function generate() {
     console.log(`Road network: ${towns.length} towns · ${nodes.filter(n => n.exit).length} exits · ${count} roads · ${map.roadMs.toFixed(0)} ms`);
 
     logStats(roads, levels, count);
-    ({ slope, relief } = slopeRelief(heights, RES, params.maxH));
+    ({ slope, relief } = slopeRelief(heights, RES, params.maxH, params.mapSize));
     refreshView();
     if (terrain) {
         scene.remove(terrain);
@@ -241,6 +254,7 @@ async function generate() {
     }
     terrain = buildTerrainMesh();
     scene.add(terrain);
+    if (params.mapSize !== viewSize) fitView(params.mapSize);
     if (waterMesh) {
         scene.remove(waterMesh);
         waterMesh.geometry.dispose();
@@ -291,8 +305,8 @@ function logStats(roads, levels, count) {
     const nPts = count * ROAD_POINTS, band = params.roadTolerance + 0.5;
     let dMax = 0, nOut = 0;
     for (let k = 0; k < nPts; k++) {
-        const px = Math.min(Math.floor(roads[2 * k] / MAP * RES), RES - 1);
-        const py = Math.min(Math.floor(roads[2 * k + 1] / MAP * RES), RES - 1);
+        const px = Math.min(Math.floor(roads[2 * k] / params.mapSize * RES), RES - 1);
+        const py = Math.min(Math.floor(roads[2 * k + 1] / params.mapSize * RES), RES - 1);
         const d = Math.abs(heights[py * RES + px] * params.maxH - levels[k]);
         if (d > dMax) dMax = d;
         if (d > band) nOut++;
@@ -384,11 +398,11 @@ function terrainColor(out, o, hm, m, s, rel, W) {
 // slope = Hangneigung |∇h| in m/m (zentrale Differenzen); relief = Höhe − Mittel im Abstand RELIEF_M in m
 // (> 0 Kuppe, < 0 Mulde) → Farbe heller/dunkler, macht flache Hügel lesbar
 // vereinfacht: eigene Neigung statt masks.js – Zusammenführen mit R11 (→ Plan/Roadmap.md)
-const RELIEF_M = 24 * MAP / RES; // ≈ 9 m (24 px bei 1024²)
+const RELIEF_M = 9.375; // m = 24 px bei 400 m / 1024 px; fest in m, sonst wüchse die Tönung mit der Map (→ Plan/MapGroesse.md)
 let slope = new Float32Array(RES * RES);
 let relief = new Float32Array(RES * RES);
-function slopeRelief(h, n, maxH) {
-    const px = MAP / n, k = maxH / (2 * px), r = Math.max(Math.round(RELIEF_M / px), 1);
+function slopeRelief(h, n, maxH, mapSize) {
+    const px = mapSize / n, k = maxH / (2 * px), r = Math.max(Math.round(RELIEF_M / px), 1);
     const s = new Float32Array(n * n), rel = new Float32Array(n * n);
     const at = (x, y) => h[Math.min(Math.max(y, 0), n - 1) * n + Math.min(Math.max(x, 0), n - 1)];
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
@@ -435,9 +449,9 @@ function buildTerrainMesh() {
         for (let i = 0; i < TN; i++) {
             const o = (j * TN + i) * 3;
             const u = i / (TN - 1), v = j / (TN - 1);
-            pos[o] = -MAP / 2 + u * MAP;
+            pos[o] = -params.mapSize / 2 + u * params.mapSize;
             pos[o + 1] = sampleBilinear(heights, RES, u, v) * params.maxH;
-            pos[o + 2] = -MAP / 2 + v * MAP;
+            pos[o + 2] = -params.mapSize / 2 + v * params.mapSize;
             uv[(j * TN + i) * 2] = u;
             uv[(j * TN + i) * 2 + 1] = v;
         }
@@ -504,7 +518,8 @@ function buildWaterMesh() {
 // Höhe des angezeigten Meshes (Dreiecke wie oben) in m; der 1024²-Readback weicht an Böschungen ±12 cm davon ab
 function meshHeight(x, z) {
     const p = terrain.geometry.attributes.position.array;
-    const fi = Math.min(Math.max((x / MAP + 0.5) * (TN - 1), 0), TN - 1), fj = Math.min(Math.max((z / MAP + 0.5) * (TN - 1), 0), TN - 1);
+    const M = params.mapSize;
+    const fi = Math.min(Math.max((x / M + 0.5) * (TN - 1), 0), TN - 1), fj = Math.min(Math.max((z / M + 0.5) * (TN - 1), 0), TN - 1);
     const i = Math.min(Math.floor(fi), TN - 2), j = Math.min(Math.floor(fj), TN - 2), s = fi - i, t = fj - j;
     const y = (i, j) => p[(j * TN + i) * 3 + 1];
     const a = y(i, j), b = y(i + 1, j), c = y(i, j + 1), d = y(i + 1, j + 1);
@@ -634,7 +649,7 @@ const COMPARE_COUNT = 12;
 async function drawThumb(seed, canvas) {
     const p = { ...params, seed, maxH: autoMaxH(params) };
     const m = await computeMap(p, THUMB);
-    const { slope: s, relief: rel } = slopeRelief(m.heights, THUMB, p.maxH);
+    const { slope: s, relief: rel } = slopeRelief(m.heights, THUMB, p.maxH, p.mapSize);
     const ctx = canvas.getContext('2d'), img = ctx.createImageData(THUMB, THUMB);
     colorize(img.data, THUMB, m.heights, m.roadMask, s, rel, p.maxH, m.water, p.waterLevel);
     ctx.putImageData(img, 0, 0);
@@ -643,7 +658,7 @@ async function drawThumb(seed, canvas) {
 // Export-Auflösung (→ Plan/Roadmap.md R7): RES = Original 1:1, 2ⁿ+1 = Unreal-Landscape-Größen (resample)
 const EXPORT_SIZES = [RES, RES / 2 + 1, RES + 1, 2 * RES + 1];
 let exportRes = RES;
-const cellSize = n => MAP / (n === RES ? n : n - 1); // m zwischen zwei Samples (Pixelzentren bzw. Vertex-Gitter)
+const cellSize = n => params.mapSize / (n === RES ? n : n - 1); // m zwischen zwei Samples (Pixelzentren bzw. Vertex-Gitter)
 
 const panel = buildPanel(params, {
     change: scheduleGenerate,
@@ -822,7 +837,7 @@ async function exportMeta() {
     const n = exportRes, grid = n === RES;
     const meta = {
         version: SAVE_VERSION,
-        mapSize: MAP,
+        mapSize: params.mapSize,
         resolution: n,
         cellSize: cellSize(n),
         maxH: params.maxH,
@@ -848,7 +863,7 @@ async function exportMeta() {
 
 if (!applyHash()) runGenerate();
 
-const walk = createWalk(camera, renderer.domElement, controls, meshHeight, MAP / 2);
+const walk = createWalk(camera, renderer.domElement, controls, meshHeight, () => params.mapSize / 2);
 if (import.meta.env.DEV) Object.assign(window.dbg, { walk, erosion, readBuffer });
 
 let lastT = 0;

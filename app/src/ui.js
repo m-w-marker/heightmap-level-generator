@@ -58,6 +58,9 @@ export const TABS = {
         ],
     },
     World: {
+        Map: [
+            ['mapSize', 'Map size (m)', 200, 1000, 50, 'Edge length of the square map. Hills, roads and rivers keep their size in metres; a larger map shows more of the same landscape at coarser pixels (1024 px).'],
+        ],
         'Water & ground': [
             ['waterLevel', 'Water level (m)', 0, 50, 0.5, 'Everything below is water.'],
             ['baseLevel', 'Ground level (m)', 0, 60, 0.5, 'Ground height before hills; its distance to the water level decides lakes.'],

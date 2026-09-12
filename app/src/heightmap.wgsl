@@ -1,4 +1,4 @@
-// Heightmap-Generator (Compute) — 1024×1024, Map 400×400 m
+// Heightmap-Generator (Compute) — res² über mapSize² m (Default 1024² über 400 m)
 // Layer-Reihenfolge pro Pixel: → Plan/Build.md „WGSL-Design“
 
 struct Params {

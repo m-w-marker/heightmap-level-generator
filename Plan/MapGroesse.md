@@ -29,7 +29,9 @@ Ringbreite, Ortsabstand, Flussbreite) behalten ihre Bedeutung: eine größere Ma
    Ringbreite in m, Flussbreite gleich ±10 %; Screenshots → Prüfung: Tabelle im Abschluss
 
 ## Abgeschlossen
-- [ ] M1 mapSize durchgereicht — geprüft am
+- [x] M1 mapSize durchgereicht (`MAP` → `params.mapSize` in Compute, Hydro, Routing, Mesh, Walk-Grenze, Export, Statistik;
+  `RELIEF_M` fest 9,375 m; `fitView` für Kamera/Nebel/Zoom; Regler World/Map 200–1000 m; 400 m: 7 Presets heights +
+  roadMask bitgleich, Vorschau-Hash Defaults/Lakes/River valley gleich HEAD) — geprüft am 2026-09-12
 - [ ] M2 Tests bei 2 Größen — geprüft am
 - [ ] M3 headless 400 vs. 800 — geprüft am
 
