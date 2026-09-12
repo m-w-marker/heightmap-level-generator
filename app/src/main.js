@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildPanel } from './ui.js';
 import { encodePng } from './png.js';
 import { quantize16, encodeR16, sampleBilinear, resample } from './export.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, ROADS_OFFSET, autoMaxH } from './uniforms.js';
@@ -489,6 +490,7 @@ window.addEventListener('keydown', e => {
 // Export-Auflösung (→ Plan/Roadmap.md R7): RES = Original 1:1, 2ⁿ+1 = Unreal-Landscape-Größen (resample)
 const EXPORT_SIZES = [RES, RES / 2 + 1, RES + 1, 2 * RES + 1];
 let exportRes = RES;
+const cellSize = n => MAP / (n === RES ? n : n - 1); // m zwischen zwei Samples (Pixelzentren bzw. Vertex-Gitter)
 
 const panel = buildPanel(params, {
     change: scheduleGenerate,
@@ -509,6 +511,9 @@ const panel = buildPanel(params, {
         'Heightmap PNG (16-bit)': exportPng16,
         'Heightmap RAW (.r16)': exportR16,
         'Splatmap PNG (RGBA)': exportSplatmap,
+        'Slope mask PNG': () => exportMask('slope'),
+        'Normal map PNG': () => exportMask('normal'),
+        'Curvature mask PNG': () => exportMask('curvature'),
         'Metadata JSON': exportMeta,
         'Heightmap PNG (8-bit preview)': exportPng,
     },
@@ -608,6 +613,24 @@ async function exportSplatmap() {
     download(await encodePng(n, n, px, 4, 8), `splatmap-${params.seed}-${n}.png`);
 }
 
+// Masken für Unreal (Neigung, Normale, Krümmung) auf dem Export-Gitter; Konvention in exportMeta (→ .clinerules/export.md)
+function curvatureExport(n) {
+    const c = curvature(resample(heights, RES, n), n, cellSize(n), params.maxH);
+    return { c, scale: curvatureScale(c) };
+}
+async function exportMask(kind) {
+    const n = exportRes;
+    let px;
+    if (kind === 'curvature') {
+        const { c, scale } = curvatureExport(n);
+        px = curvatureBytes(c, scale);
+    } else {
+        const g = gradient(resample(heights, RES, n), n, cellSize(n), params.maxH);
+        px = kind === 'slope' ? slopeBytes(slopeDeg(g)) : normalBytes(normals(g));
+    }
+    download(await encodePng(n, n, px, kind === 'normal' ? 4 : 1, 8), `${kind}-${params.seed}-${n}.png`);
+}
+
 // Maßstab + Konvention für die Engine, dazu alle Einstellungen (Save-Format) → reproduzierbar
 function exportMeta() {
     const n = exportRes, grid = n === RES;
@@ -615,7 +638,7 @@ function exportMeta() {
         version: SAVE_VERSION,
         mapSize: MAP,
         resolution: n,
-        cellSize: MAP / (grid ? n : n - 1), // m zwischen zwei Samples
+        cellSize: cellSize(n),
         maxH: params.maxH,
         waterLevel: params.waterLevel,
         height: `height_m = value / 65535 * maxH (16-bit PNG; .r16 = raw uint16 little endian, no header); value / 255 * maxH (8-bit preview, always ${RES})`,
@@ -623,6 +646,13 @@ function exportMeta() {
             ? 'pixel (i, j) = map ((i + 0.5) / resolution * mapSize, (j + 0.5) / resolution * mapSize) (cell centres)'
             : 'pixel (i, j) = map (i / (resolution - 1) * mapSize, j / (resolution - 1) * mapSize) (vertices, first/last on the map edges)')
             + '; row j = map y (three.js +z)',
+        curvatureScale: curvatureExport(n).scale, // m, je Map (→ masks.curvature)
+        masks: {
+            slope: 'slope_deg = value / 255 * 90 (8-bit gray, 0 = flat)',
+            normal: 'tangent space, DirectX / Unreal ("green down"): n = rgb / 255 * 2 - 1, R = +column, G = +row, B = up; flip G for OpenGL / Blender',
+            curvature: `height - mean height within ±${CURV_R} m; value = 128 + dev / curvatureScale * 127.5, clamped; curvatureScale = 99th percentile of |dev| of this map (bright = ridge, dark = hollow)`,
+            import: 'masks are linear data: import without sRGB (Unreal: Masks / Linear Color; normal map: Normalmap compression)',
+        },
         settings: pickParams(params),
     };
     download(new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }), `heightmap-${params.seed}-${exportRes}-meta.json`);
