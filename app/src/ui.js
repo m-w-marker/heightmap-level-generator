@@ -140,8 +140,8 @@ export function seedGrid(size, count, current, draw, pick) {
 }
 
 // cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), walk(), compare(), exports: {Label: fn},
-//     exportSizes: [px], exportSize(px), regenerate()
-// → { guis: {Tab: GUI}, refresh(), status(text), busy(on) }
+//     exportTargets: {key: Label}, exportTarget(key), exportSize(px), regenerate()
+// → { guis: {Tab: GUI}, refresh(), status(text), sizes(options, selected), busy(on) }
 export function buildPanel(params, cb) {
     const seed = el('input', { id: 'seed', type: 'number', min: 1, max: 99999, step: 1, value: params.seed, title: 'Seed (seed)' });
     seed.addEventListener('change', () => {
@@ -172,17 +172,19 @@ export function buildPanel(params, cb) {
         }
         setTimeout(() => { link.textContent = 'Link'; }, 1200);
     });
-    // Export-Größe: Einstellung, kein Menü → Auswahl bleibt stehen
-    // 0 = native: aktuelle Auflösung, wächst mit der Map-Größe
-    const size = el('select', { id: 'exportRes', title: 'Export size in pixels (heightmap, RAW, splatmap, masks, metadata); native = 0.5 m per pixel, grows with the map size' },
-        ...cb.exportSizes.map(n => el('option', { value: n, textContent: n ? `${n} px` : 'native' })));
+    // Export-Ziel + Größe: Einstellungen, kein Menü → Auswahl bleibt stehen; Größen füllt main je Ziel und Map (sizes())
+    const target = el('select', { id: 'exportTarget', title: 'Target engine: sets the export sizes, the normal map convention, the row order and the import values in the metadata' },
+        ...Object.entries(cb.exportTargets).map(([k, t]) => el('option', { value: k, textContent: t })));
+    target.addEventListener('change', () => cb.exportTarget(target.value));
+    const size = el('select', { id: 'exportRes', title: 'Export size in pixels and spacing (heightmap, RAW, splatmap, masks, metadata)' });
     size.addEventListener('change', () => cb.exportSize(+size.value));
     const status = el('div',{ id: 'status', className: 'row', title: 'Last generation: GPU passes incl. readback, road network, total' });
     const toolbar = el('div', { className: 'toolbar' },
         el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice, compare, regen, walk),
         el('div', { className: 'row' }, menu('preset', 'Preset…', cb.presets, cb.preset),
             button('Save', 'Save all settings as JSON', cb.save), button('Load', 'Load settings from JSON', cb.load), link),
-        el('div', { className: 'row' }, menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]()), size),
+        el('div', { className: 'row' }, menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]())),
+        el('div', { className: 'row' }, el('label', { textContent: 'For', htmlFor: 'exportTarget' }), target, size),
         status);
 
     const tabBar = el('div', { className: 'tabs' });
@@ -222,6 +224,11 @@ export function buildPanel(params, cb) {
             for (const g of Object.values(guis)) g.controllersRecursive().forEach(c => c.updateDisplay());
         },
         status(text) { status.textContent = text; },
+        // options: [[px, Label]], selected: px
+        sizes(options, selected) {
+            size.replaceChildren(...options.map(([v, t]) => el('option', { value: v, textContent: t })));
+            size.value = selected;
+        },
         busy(on) {
             regen.disabled = on;
             status.classList.toggle('busy', on);

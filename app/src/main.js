@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildPanel, seedGrid } from './ui.js';
 import { encodePng } from './png.js';
-import { quantize16, encodeR16, sampleBilinear, resample } from './export.js';
+import { quantize16, encodeR16, sampleBilinear, resample, TARGETS, exportSizes, engineImport, flipRows } from './export.js';
 import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
@@ -251,7 +251,10 @@ async function generate() {
     const map = await computeMap({ ...params }, g.res);
     if (params.mapSize !== size) return; // Mesh passte nicht mehr zur Map-Größe; die dabei geplante Regeneration zeigt die neue
     ({ terrain: terrain128, heights, roadMask, water } = map);
-    if (g.res !== RES) resizeView(g);
+    if (g.res !== RES) {
+        resizeView(g);
+        refreshSizes();
+    }
     const { points: roads, levels, count, nodes, towns } = map.net;
     if (map.hydro) console.log(`Hydrology: ${map.hydro.riverCount} rivers · ${map.hydro.lakes.filter(l => l > 0).length} lake cells (${g.pre}²)`);
     if (import.meta.env.DEV) Object.assign(window.dbg, { hydro: map.hydro, net: map.net });
@@ -698,11 +701,24 @@ async function drawThumb(seed, canvas) {
     ctx.putImageData(img, 0, 0);
 }
 
-// Export-Auflösung (→ Plan/Roadmap.md R7): 0 = native (RES, Original 1:1, wächst mit der Map), 2ⁿ+1 = Unreal-Landscape-Größen (resample)
-const EXPORT_SIZES = [0, 513, 1025, 2049];
-let exportRes = 0;
-const exportN = () => exportRes || RES;
-const cellSize = n => params.mapSize / (n === RES ? n : n - 1); // m zwischen zwei Samples (Pixelzentren bzw. Vertex-Gitter)
+// Export (→ Plan/ExportZiele.md): Ziel-Engine bestimmt Größen, Normal-Konvention und Zeilenrichtung. Quelle = N² Readback;
+// Größe n == N → Pixelzentren 1:1, sonst Vertex-Gitter auf den Map-Ecken (resample). Nicht in Save/Link
+const exp = { target: 'unreal', size: 0 };
+const exportSource = () => ({ N: RES, heights, roadMask, water, slope });
+const cellSize = (n, N) => params.mapSize / (n === N ? n : n - 1); // m zwischen zwei Samples
+function exportN(src) {
+    const list = exportSizes(exp.target, src.N);
+    return list.includes(exp.size) ? exp.size : list[0];
+}
+// Feld der Quelle auf das Export-Gitter, Zeilen je Ziel
+function onGrid(buf, res, n, centres = n === res) {
+    const r = resample(buf, res, n, centres);
+    return TARGETS[exp.target].flip ? flipRows(r, n) : r;
+}
+function refreshSizes() {
+    const src = exportSource(), list = exportSizes(exp.target, src.N);
+    panel.sizes(list.map(n => [n, `${n} px · ${+cellSize(n, src.N).toFixed(3)} m`]), exportN(src));
+}
 
 const panel = buildPanel(params, {
     change: scheduleGenerate,
@@ -723,8 +739,9 @@ const panel = buildPanel(params, {
         panel.refresh();
         scheduleGenerate();
     }),
-    exportSizes: EXPORT_SIZES,
-    exportSize: n => { exportRes = n; },
+    exportTargets: Object.fromEntries(Object.entries(TARGETS).map(([k, t]) => [k, t.label])),
+    exportTarget: t => { exp.target = t; refreshSizes(); },
+    exportSize: n => { exp.size = n; },
     exports: {
         'Heightmap PNG (16-bit)': exportPng16,
         'Heightmap RAW (.r16)': exportR16,
@@ -740,6 +757,7 @@ const panel = buildPanel(params, {
     regenerate: runGenerate,
 });
 panel.guis.World.add(params, 'maxH').name('Max height (auto, m)').decimals(1).disable().listen();
+refreshSizes();
 
 function download(blob, name) {
     const a = document.createElement('a');
@@ -804,21 +822,22 @@ function exportPng() {
 }
 
 async function exportPng16() {
-    const n = exportN();
-    download(await encodePng(n, n, quantize16(resample(heights, RES, n)), 1, 16), `heightmap-${params.seed}-${n}-16bit.png`);
+    const src = await exportSource(), n = exportN(src);
+    download(await encodePng(n, n, quantize16(onGrid(src.heights, src.N, n)), 1, 16), `heightmap-${params.seed}-${n}-16bit.png`);
 }
 
-function exportR16() {
-    const n = exportN();
-    download(new Blob([encodeR16(quantize16(resample(heights, RES, n)))], { type: 'application/octet-stream' }), `heightmap-${params.seed}-${n}.r16`);
+async function exportR16() {
+    const src = await exportSource(), n = exportN(src);
+    download(new Blob([encodeR16(quantize16(onGrid(src.heights, src.N, n)))], { type: 'application/octet-stream' }), `heightmap-${params.seed}-${n}.r16`);
 }
 
 // Splatmap RGBA: R Straße · G Fels · B Wasser + Ufer (bis zur Sand-Grenze der Farbrampe) · A Rest (Gras);
 // Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md). Eingaben resamplen, nicht RGBA → Summe bleibt 255.
 // Wasser = Meer, Seen, Flüsse: Spiegel je Pixel resamplen, nicht die 0-codierten Rohwerte (0 = Meer) (→ Plan/Fluesse.md)
 async function exportSplatmap() {
-    const n = exportN(), hs = resample(heights, RES, n), ms = resample(roadMask, RES, n), ss = resample(slope, RES, n);
-    const ws = water.some(w => w > 0) ? resample(Float32Array.from(water, w => spiegel(w, params.waterLevel)), RES, n) : null;
+    const src = await exportSource(), n = exportN(src), N = src.N;
+    const hs = onGrid(src.heights, N, n), ms = onGrid(src.roadMask, N, n), ss = onGrid(src.slope, N, n);
+    const ws = src.water.some(w => w > 0) ? onGrid(Float32Array.from(src.water, w => spiegel(w, params.waterLevel)), N, n) : null;
     const px = new Uint8Array(n * n * 4), shore = STOPS[1][0];
     for (let i = 0; i < n * n; i++) {
         const h = hs[i] * params.maxH;
@@ -835,20 +854,21 @@ async function exportSplatmap() {
     download(await encodePng(n, n, px, 4, 8), `splatmap-${params.seed}-${n}.png`);
 }
 
-// Masken für Unreal (Neigung, Normale, Krümmung) auf dem Export-Gitter; Konvention in exportMeta (→ .clinerules/export.md)
-function curvatureExport(n) {
-    const c = curvature(resample(heights, RES, n), n, cellSize(n), params.maxH);
+// Masken (Neigung, Normale, Krümmung) auf dem Export-Gitter, aus den schon gespiegelten Höhen → in sich stimmig;
+// Konvention in exportMeta (→ .clinerules/export.md)
+function curvatureExport(src, n) {
+    const c = curvature(onGrid(src.heights, src.N, n), n, cellSize(n, src.N), params.maxH);
     return { c, scale: curvatureScale(c) };
 }
 async function exportMask(kind) {
-    const n = exportN();
+    const src = await exportSource(), n = exportN(src);
     let px;
     if (kind === 'curvature') {
-        const { c, scale } = curvatureExport(n);
+        const { c, scale } = curvatureExport(src, n);
         px = curvatureBytes(c, scale);
     } else {
-        const g = gradient(resample(heights, RES, n), n, cellSize(n), params.maxH);
-        px = kind === 'slope' ? slopeBytes(slopeDeg(g)) : normalBytes(normals(g));
+        const g = gradient(onGrid(src.heights, src.N, n), n, cellSize(n, src.N), params.maxH);
+        px = kind === 'slope' ? slopeBytes(slopeDeg(g)) : normalBytes(normals(g), TARGETS[exp.target].normal === 'opengl');
     }
     download(await encodePng(n, n, px, kind === 'normal' ? 4 : 1, 8), `${kind}-${params.seed}-${n}.png`);
 }
@@ -856,17 +876,17 @@ async function exportMask(kind) {
 // Flow-Map der aktuellen Einstellungen auf dem Export-Gitter: Simulation neu (deterministisch → dieselbe wie bei der
 // Regeneration); Erosion aus → nur Wasser, Terrain unberührt (→ Plan/Erosion.md).
 // vereinfacht: Simulation läuft vor den Straßen – sie lenken das Wasser in der Flow-Map nicht um
-async function flowExport(n) {
+async function flowExport(src, n) {
     const ero = grids(params.mapSize).ero;
     const f = await serial(() => {
         runErosion({ ...params }, params.erosionStrength > 0);
         return readBuffer(erosion.flow, ero * ero * 4);
     });
-    const r = resample(f, ero, n, n === RES); // RES = Pixelzentren wie die Heightmap, sonst Vertex-Gitter
+    const r = onGrid(f, ero, n, n === src.N); // native = Pixelzentren wie die Heightmap, sonst Vertex-Gitter
     return { f: r, scale: flowScale(r) };
 }
 async function exportFlow() {
-    const n = exportN(), { f, scale } = await flowExport(n);
+    const src = await exportSource(), n = exportN(src), { f, scale } = await flowExport(src, n);
     download(await encodePng(n, n, flowBytes(f, scale), 1, 8), `flow-${params.seed}-${n}.png`);
 }
 
@@ -879,31 +899,36 @@ async function exportGlb() {
 
 // Maßstab + Konvention für die Engine, dazu alle Einstellungen (Save-Format) → reproduzierbar
 async function exportMeta() {
-    const n = exportN(), grid = n === RES;
+    const src = await exportSource(), n = exportN(src), grid = n === src.N, t = TARGETS[exp.target], cell = cellSize(n, src.N);
     const meta = {
         version: SAVE_VERSION,
+        target: t.label,
+        import: engineImport(exp.target, { mapSize: params.mapSize, n, cell, maxH: params.maxH }), // Werte für den Import-Dialog
         mapSize: params.mapSize,
         resolution: n,
-        cellSize: cellSize(n),
+        cellSize: cell,
         maxH: params.maxH,
         waterLevel: params.waterLevel,
-        height: `height_m = value / 65535 * maxH (16-bit PNG; .r16 = raw uint16 little endian, no header); value / 255 * maxH (8-bit preview, always ${RES})`,
+        height: `height_m = value / 65535 * maxH (16-bit PNG; .r16 = raw uint16 little endian, no header); value / 255 * maxH (8-bit preview, always ${RES}, rows top-down)`,
         pixels: (grid
             ? 'pixel (i, j) = map ((i + 0.5) / resolution * mapSize, (j + 0.5) / resolution * mapSize) (cell centres)'
             : 'pixel (i, j) = map (i / (resolution - 1) * mapSize, j / (resolution - 1) * mapSize) (vertices, first/last on the map edges)')
-            + '; row j = map y (three.js +z)',
-        curvatureScale: curvatureExport(n).scale, // m, je Map (→ masks.curvature)
-        flowScale: (await flowExport(n)).scale, // je Map (→ masks.flow)
+            + (t.flip ? '; rows bottom-up: file row 0 = map y = mapSize (three.js +z edge) = Unity z 0, so the terrain is not mirrored'
+                : '; row j = map y (three.js +z)'),
+        curvatureScale: curvatureExport(src, n).scale, // m, je Map (→ masks.curvature)
+        flowScale: (await flowExport(src, n)).scale, // je Map (→ masks.flow)
         masks: {
             slope: 'slope_deg = value / 255 * 90 (8-bit gray, 0 = flat)',
-            normal: 'tangent space, DirectX / Unreal ("green down"): n = rgb / 255 * 2 - 1, R = +column, G = +row, B = up; flip G for OpenGL / Blender',
+            normal: t.normal === 'opengl'
+                ? 'tangent space, OpenGL ("green up"): n = rgb / 255 * 2 - 1, R = +column, G = -row (up in the image), B = up'
+                : 'tangent space, DirectX / Unreal ("green down"): n = rgb / 255 * 2 - 1, R = +column, G = +row, B = up; flip G for OpenGL / Blender',
             curvature: `height - mean height within ±${CURV_R} m; value = 128 + dev / curvatureScale * 127.5, clamped; curvatureScale = 99th percentile of |dev| of this map (bright = ridge, dark = hollow)`,
             flow: 'where rain water ran in the erosion simulation (sum of depth * speed, before roads); value = 255 * log(1 + flow) / log(1 + flowScale), clamped; flowScale = 99th percentile of this map; bright = gullies and valley floors',
             import: 'masks are linear data: import without sRGB (Unreal: Masks / Linear Color; normal map: Normalmap compression)',
         },
         settings: pickParams(params),
     };
-    download(new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }), `heightmap-${params.seed}-${exportN()}-meta.json`);
+    download(new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }), `heightmap-${params.seed}-${n}-meta.json`);
 }
 
 if (!applyHash()) runGenerate();
