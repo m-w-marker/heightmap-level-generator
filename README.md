@@ -7,7 +7,7 @@ heightmap, masks and mesh for your engine.
 
 **▶ Try it in your browser: https://m-w-marker.github.io/heightmap-level-generator/** (needs WebGPU, e.g. current desktop Chrome or Edge)
 
-![Generator: 3D terrain with road network, 2D map and parameter panel](docs/generator.png)
+![Generator: 3D terrain with lakes, rivers and roads, 2D map and parameter panel](docs/generator.png)
 
 ## Features
 
@@ -53,7 +53,8 @@ heightmap, masks and mesh for your engine.
 
 ## Quick start
 
-Requires Node.js and a browser with WebGPU (current Chrome or Edge).
+No install needed for the [online version](https://m-w-marker.github.io/heightmap-level-generator/). To run it locally
+you need Node.js and a browser with WebGPU (current Chrome or Edge).
 
 ```bash
 cd app
