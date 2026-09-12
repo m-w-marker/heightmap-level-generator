@@ -5,7 +5,7 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildPanel, seedGrid } from './ui.js';
 import { encodePng } from './png.js';
 import { quantize16, encodeR16, sampleBilinear, resample, TARGETS, exportSizes, engineImport, flipRows, exportGrid, layout } from './export.js';
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, TOWN_FADE, slopeRelief, materialMask } from './masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, TOWN_FADE, slopeRelief, materialMask, nearestWater, shoreDist } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, UNIFORM_FLOATS, grids, autoMaxH } from './uniforms.js';
@@ -121,6 +121,16 @@ const params = {
     erosionStrength: 0, // % (0 = aus → Maps wie vor der Erosion, → Plan/Erosion.md)
     erosionIterations: 300,
     screeAngle: 90, // ° Schuttwinkel der thermischen Erosion; 90 = aus, darunter werden Abrisskanten zu Schutthängen
+    // Material (→ Plan/Texturierung.md): steuern 3D, Vorschau und Splatmap, ohne Regeneration; Defaults = frühere feste Werte
+    rockSlope: 35,   // ° Fels ab
+    rockBlend: 15,   // ° bis voll Fels
+    snowHeight: 140, // m über waterLevel voll Schnee; Schutt und Fels-Zone darunter wandern mit
+    snowBlend: 25,   // m Schutt → Schnee
+    sandHeight: 1.5, // m Ufer über dem örtlichen Wasserspiegel
+    gravelCurv: 0,   // m: Mulden tiefer als das → Kies (nur 3D); 0 = aus
+    texScale: 4,     // m je Textur-Kachel
+    texFade: 150,    // m Kameraabstand, ab dem das Farbbild statt der Texturen gilt
+    texTint: 1,      // Texturen auf die Farbkarte getönt (1) … eigene Texturfarbe (0)
 };
 // Basis jedes Presets; ohne maxH: sonst stünde es bis zur nächsten Regeneration auf 0 (flache Map, Export mit maxH 0)
 const { maxH: _, ...DEFAULTS } = params;
@@ -273,7 +283,9 @@ async function generate() {
 
     logStats(roads, levels, count);
     ({ slope, relief } = slopeRelief(heights, RES, params.maxH, params.mapSize));
+    shoreL = shoreOf(heights, water, RES);
     updateMaskTex();
+    applyMaterial(); // Preset / Undo / waterLevel
     refreshView();
     if (terrain) {
         scene.remove(terrain);
@@ -354,7 +366,8 @@ const pctx = preview.getContext('2d');
 let pimg = pctx.createImageData(RES, RES);
 
 // Farbrampe (Wasser/Sand/Gras/Fels/Schnee/Straße) — geteilt von 2D-Preview und 3D-Mesh, damit beide bei gleichem Seed identisch bleiben.
-// In Metern über waterLevel, nicht relativ zu maxH (das ist automatisch → Farben würden je Preset wandern)
+// In Metern über waterLevel, nicht relativ zu maxH (das ist automatisch → Farben würden je Preset wandern).
+// Höhen setzt applyMaterial() aus den Material-Reglern; dieselben Stufen nimmt das Auto-Material (material.js)
 const STOPS = [
     [0, [194, 178, 128]],     // Sand (Ufer)
     [1.5, [108, 146, 72]],    // Gras
@@ -364,7 +377,20 @@ const STOPS = [
     [140, [240, 244, 248]],   // Schnee
 ];
 const ROCK = [110, 102, 92];
-const ROCK_SLOPE = [0.7, 1.2]; // Hangneigung (m/m ≈ 35°–50°) → Überblendung zu Fels
+const ROCK_SLOPE = [0.7, 1.2]; // Hangneigung m/m → Überblendung zu Fels (aus rockSlope / rockBlend)
+const ALPINE = 55; // m: Fels-Zone beginnt so weit unter der Schneegrenze (früher fest 85 bei Schnee 140)
+
+// Material-Regler → Farbrampe, Fels-Neigung und Auto-Material; Stufen streng steigend, sonst teilt die Rampe durch 0
+function applyMaterial() {
+    const p = params, h = [0, p.sandHeight, 45, p.snowHeight - ALPINE, p.snowHeight - p.snowBlend, p.snowHeight];
+    for (let i = 1; i < h.length; i++) h[i] = Math.max(h[i], h[i - 1] + 0.01);
+    h.forEach((v, i) => { STOPS[i][0] = v; });
+    ROCK_SLOPE[0] = Math.tan(p.rockSlope * Math.PI / 180);
+    ROCK_SLOPE[1] = Math.tan(Math.min(p.rockSlope + p.rockBlend, 89) * Math.PI / 180);
+    autoMat.update({ sand: h[1], green: h[2], rockH: h[3], scree: h[4], snow: h[5], rockLo: ROCK_SLOPE[0], rockHi: ROCK_SLOPE[1],
+        waterLevel: p.waterLevel, gravelCurv: p.gravelCurv, texScale: p.texScale, texFade: p.texFade, texTint: p.texTint,
+        sandColor: new THREE.Color().setRGB(...STOPS[0][1].map(v => v / 255), THREE.SRGBColorSpace).toArray() });
+}
 const RELIEF_TINT = 0.06;      // Helligkeit pro m Kuppe/Mulde (±15 % max)
 
 // '#rrggbb' → [r, g, b] 0–255, gecacht: terrainColor läuft 1M× pro Bild
@@ -383,9 +409,14 @@ const roadWeight = m => Math.min(Math.max(m, 0), 1);
 
 // Wasserspiegel eines Pixels: See/Fluss aus dem Readback, sonst das Meer (→ Plan/Fluesse.md)
 const spiegel = (w, waterLevel) => w || waterLevel;
+// Ufer-Abstand m je Pixel (masks.shoreDist) → Sand an Meer, Seen und Flüssen gleich in Farbkarte, Textur und Splatmap
+const shoreOf = (h, wat, n, p = params) => {
+    const near = nearestWater(wat, n, p.mapSize / n);
+    return Float32Array.from(h, (v, i) => shoreDist(v * p.maxH, spiegel(wat[i], p.waterLevel), p.waterLevel, near?.level[i], near?.dist[i]));
+};
 
-// schreibt 0–255-Werte (→ Plan/Build.md Datenfluss); W = Wasserspiegel des Pixels
-function terrainColor(out, o, hm, m, s, rel, W) {
+// schreibt 0–255-Werte (→ Plan/Build.md Datenfluss); W = Wasserspiegel des Pixels, S = Ufer-Abstand m
+function terrainColor(out, o, hm, m, s, rel, W, S) {
     let r, g, b;
     if (hm < W) {
         const t = hm / W;
@@ -393,7 +424,10 @@ function terrainColor(out, o, hm, m, s, rel, W) {
         g = 90 + 28 * t;
         b = 158 + 22 * t;
     } else {
-        const n = hm - params.waterLevel;
+        // Sand bis sandHeight Ufer-Abstand (Meer, See, Fluss) wie Splatmap und Textur; darüber die Rampe ab Meereshöhe.
+        // Ohne See in der Nähe ist S = hm − waterLevel → dieselbe Rechnung wie vorher: Sand → Gras linear über STOPS[1]
+        const shore = S / STOPS[1][0];
+        const n = Math.max(hm - params.waterLevel, shore < 1 ? STOPS[1][0] : 0);
         let a = STOPS[STOPS.length - 2], c = STOPS[STOPS.length - 1];
         for (let i = 0; i < STOPS.length - 1; i++) {
             if (n <= STOPS[i + 1][0]) { a = STOPS[i]; c = STOPS[i + 1]; break; }
@@ -402,6 +436,12 @@ function terrainColor(out, o, hm, m, s, rel, W) {
         r = a[1][0] + (c[1][0] - a[1][0]) * f;
         g = a[1][1] + (c[1][1] - a[1][1]) * f;
         b = a[1][2] + (c[1][2] - a[1][2]) * f;
+        if (shore < 1) {
+            const S = STOPS[0][1];
+            r = S[0] + (r - S[0]) * shore;
+            g = S[1] + (g - S[1]) * shore;
+            b = S[2] + (b - S[2]) * shore;
+        }
         const k = rockWeight(s);
         r += (ROCK[0] - r) * k;
         g += (ROCK[1] - g) * k;
@@ -423,18 +463,19 @@ function terrainColor(out, o, hm, m, s, rel, W) {
 }
 
 let slope = new Float32Array(RES * RES);  // m/m (slopeRelief in masks.js)
+let shoreL = new Float32Array(RES * RES); // Ufer-Abstand m (shoreOf)
 let relief = new Float32Array(RES * RES);
 
 // Farbrampe → RGBA-Pixel (Alpha 255) für n² Werte
-function colorize(d, n, h, m, s, rel, maxH, wat, waterLevel) {
+function colorize(d, n, h, m, s, rel, maxH, wat, waterLevel, shore) {
     for (let i = 0; i < n * n; i++) {
-        terrainColor(d, i * 4, h[i] * maxH, m[i], s[i], rel[i], spiegel(wat[i], waterLevel));
+        terrainColor(d, i * 4, h[i] * maxH, m[i], s[i], rel[i], spiegel(wat[i], waterLevel), shore[i]);
         d[i * 4 + 3] = 255;
     }
 }
 
 function updatePreview() {
-    colorize(pimg.data, RES, heights, roadMask, slope, relief, params.maxH, water, params.waterLevel);
+    colorize(pimg.data, RES, heights, roadMask, slope, relief, params.maxH, water, params.waterLevel, shoreL);
     pctx.putImageData(pimg, 0, 0);
 }
 
@@ -453,23 +494,35 @@ function makeTerrainTex() {
 }
 let terrainTex = makeTerrainTex();
 const terrainMat = new THREE.MeshStandardMaterial({ map: terrainTex, roughness: 1, metalness: 0 });
-// Ansicht, nicht in Save/Link (hängt am Gerät): Textures aus = Farbmaterial (schwache GPUs, Vergleich)
-const view = { textures: true };
-const autoMat = createTerrainMaterial(terrainTex);
-const terrainMaterial = () => view.textures ? autoMat.mat : terrainMat;
-
-// Material-Maske RES² für das Auto-Material (→ Plan/Texturierung.md): Daten, kein sRGB, ohne Mips; Texel wie terrainTex
-let maskTex = null;
+// Material-Maske RES² für das Auto-Material (→ Plan/Texturierung.md): Daten, kein sRGB, ohne Mips; Texel wie terrainTex.
+// Start: 1×1, bis die erste Regeneration sie füllt
+const maskData = (data, n) => Object.assign(new THREE.DataTexture(data, n, n), { magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter, needsUpdate: true });
+let maskTex = maskData(new Uint8Array(4), 1);
 function updateMaskTex() {
-    const cell = params.mapSize / RES, c = curvature(heights, RES, cell, params.maxH);
-    const above = Float32Array.from(heights, (h, i) => h * params.maxH - spiegel(water[i], params.waterLevel));
-    const data = materialMask(slope, c, curvatureScale(c), roadMask, above);
-    if (maskTex?.image.width !== RES) {
-        maskTex?.dispose();
-        maskTex = new THREE.DataTexture(data, RES, RES);
-        maskTex.magFilter = maskTex.minFilter = THREE.LinearFilter;
-    } else maskTex.image.data = data;
-    maskTex.needsUpdate = true;
+    const cell = params.mapSize / RES, c = curvature(heights, RES, cell, params.maxH), scale = curvatureScale(c);
+    const data = materialMask(slope, c, scale, roadMask, shoreL);
+    if (maskTex.image.width !== RES) {
+        maskTex.dispose();
+        maskTex = maskData(data, RES);
+    } else {
+        maskTex.image.data = data;
+        maskTex.needsUpdate = true;
+    }
+    autoMat.setMask(maskTex, scale);
+}
+
+// Ansicht, nicht in Save/Link (hängt am Gerät): Textures aus = Farbmaterial (schwache GPUs, Vergleich); Kantenlänge der
+// Schicht-Texturen 2048 / 1024 (¼ Speicher)
+const view = { textures: true, texSize: 2048 };
+const autoMat = createTerrainMaterial(terrainTex, maskTex, renderer.getMaxAnisotropy());
+const terrainMaterial = () => view.textures && autoMat.ready ? autoMat.mat : terrainMat;
+async function loadTextures() {
+    try {
+        await autoMat.load(view.texSize);
+        if (terrain) terrain.material = terrainMaterial();
+    } catch (e) {
+        console.error('Textures:', e.message);
+    }
 }
 let terrain = null;
 
@@ -701,7 +754,7 @@ async function drawThumb(seed, canvas) {
     const m = await computeMap(p, THUMB);
     const { slope: s, relief: rel } = slopeRelief(m.heights, THUMB, p.maxH, p.mapSize);
     const ctx = canvas.getContext('2d'), img = ctx.createImageData(THUMB, THUMB);
-    colorize(img.data, THUMB, m.heights, m.roadMask, s, rel, p.maxH, m.water, p.waterLevel);
+    colorize(img.data, THUMB, m.heights, m.roadMask, s, rel, p.maxH, m.water, p.waterLevel, shoreOf(m.heights, m.water, THUMB, p));
     ctx.putImageData(img, 0, 0);
 }
 
@@ -736,6 +789,13 @@ const panel = buildPanel(params, {
     change: scheduleGenerate,
     color: () => {
         setRoadColor();
+        refreshView();
+        clearTimeout(colorTimer);
+        colorTimer = setTimeout(record, 400);
+    },
+    // Material-Regler: Farben + Shader-Werte, keine Regeneration; Undo-Eintrag entprellt wie die Farbe
+    material: () => {
+        applyMaterial();
         refreshView();
         clearTimeout(colorTimer);
         colorTimer = setTimeout(record, 400);
@@ -779,7 +839,12 @@ panel.guis.World.add(params, 'maxH').name('Max height (auto, m)').decimals(1).di
     const c = f.add(view, 'textures').name('Textures').onChange(() => { if (terrain) terrain.material = terrainMaterial(); });
     c.domElement.title = 'Real ground textures up close (grass, rock, gravel, sand, snow, road); off = the flat color map, lighter on weak GPUs. Not saved.';
     c.domElement.dataset.key = 'textures';
+    const s = f.add(view, 'texSize', { '2K': 2048, '1K': 1024 }).name('Texture size').onChange(loadTextures);
+    s.domElement.title = 'Resolution of the ground textures: 1K needs a quarter of the GPU memory (~70 instead of ~270 MB). Not saved.';
+    s.domElement.dataset.key = 'texSize';
 }
+applyMaterial();
+loadTextures();
 refreshSizes();
 
 function download(blob, name) {
@@ -862,12 +927,15 @@ const levelsOnGrid = (src, n) => src.water.some(w => w > 0)
 // Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md). Eingaben resamplen, nicht RGBA → Summe bleibt 255.
 async function exportSplatmap() {
     const src = await exportSource(), n = exportN(src.N), N = src.N;
-    const hs = onGrid(src.heights, N, n), ms = onGrid(src.roadMask, N, n), ss = onGrid(src.slope, N, n), ws = levelsOnGrid(src, n);
+    const hs = onGrid(src.heights, N, n), ms = onGrid(src.roadMask, N, n), ss = onGrid(src.slope, N, n);
+    // Ufer wie die Farbkarte (Ufer-Abstand, 0 unter Wasser); Spiegel und nächster See je Pixel resamplen, nicht das Ergebnis
+    const ws = levelsOnGrid(src, n), near = nearestWater(src.water, N, params.mapSize / N);
+    const lv = near && onGrid(near.level, N, n), ld = near && onGrid(near.dist, N, n);
     const px = new Uint8Array(n * n * 4), shore = STOPS[1][0];
     for (let i = 0; i < n * n; i++) {
         const h = hs[i] * params.maxH;
         const road = roadWeight(ms[i]);
-        const wet = Math.min(Math.max(1 - (h - ws[i]) / shore, 0), 1);
+        const wet = Math.min(Math.max(1 - shoreDist(h, ws[i], params.waterLevel, lv?.[i], ld?.[i]) / shore, 0), 1);
         const water = (1 - road) * wet;
         const rock = (1 - road) * (1 - wet) * rockWeight(ss[i]); // (1 − wet), nicht (1 − water): sonst Summe > 1
         const R = Math.floor(road * 255), G = Math.floor(rock * 255), B = Math.floor(water * 255);
@@ -1022,7 +1090,7 @@ async function exportLayout() {
 if (!applyHash()) runGenerate();
 
 const walk = createWalk(camera, renderer.domElement, controls, meshHeight, () => params.mapSize / 2);
-if (import.meta.env.DEV) Object.assign(window.dbg, { walk, erosion, readBuffer });
+if (import.meta.env.DEV) Object.assign(window.dbg, { walk, erosion, readBuffer, autoMat });
 
 let lastT = 0;
 renderer.setAnimationLoop(t => {

@@ -95,8 +95,44 @@ export const waterBytes = (h, level, maxH) => Uint8Array.from(h, (v, i) => byte(
 export const flowBytes = (f, scale) => Uint8Array.from(f, v => byte(Math.log1p(Math.max(v, 0)) / Math.log1p(scale)));
 export const slopeBytes = deg => Uint8Array.from(deg, d => byte(d / 90));
 export const curvatureBytes = (c, scale) => Uint8Array.from(c, v => byte(0.5 + v / (2 * scale)));
+// Ufer an Seen und Flüssen: deren Spiegel steht nur auf nassen Pixeln (water > 0), das trockene Ufer sähe sonst nur das Meer
+// → kein Sand am See. Je Pixel Spiegel des nächsten nassen Pixels + Abstand in m (Chamfer 1/√2, vor- und rückwärts: O(n²),
+// ≤ 8 % über dem echten Abstand); ohne Seen/Flüsse null
+export function nearestWater(water, n, cell) {
+    if (!water.some(w => w > 0)) return null;
+    const dist = new Float32Array(n * n).fill(1e9), level = Float32Array.from(water), D = Math.SQRT2;
+    for (let i = 0; i < n * n; i++) if (water[i] > 0) dist[i] = 0;
+    const relax = (i, j, c) => { if (dist[j] + c < dist[i]) { dist[i] = dist[j] + c; level[i] = level[j]; } };
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        const i = y * n + x;
+        if (x > 0) relax(i, i - 1, 1);
+        if (y > 0) {
+            relax(i, i - n, 1);
+            if (x > 0) relax(i, i - n - 1, D);
+            if (x < n - 1) relax(i, i - n + 1, D);
+        }
+    }
+    for (let y = n - 1; y >= 0; y--) for (let x = n - 1; x >= 0; x--) {
+        const i = y * n + x;
+        if (x < n - 1) relax(i, i + 1, 1);
+        if (y < n - 1) {
+            relax(i, i + n, 1);
+            if (x < n - 1) relax(i, i + n + 1, D);
+            if (x > 0) relax(i, i + n - 1, D);
+        }
+    }
+    for (let i = 0; i < n * n; i++) dist[i] *= cell;
+    return { level, dist };
+}
+
+// Abstand zum Ufer in m (Sand bis sandHeight): 0 unter Wasser (h < W), sonst der kleinere von Höhe über dem Meer und
+// |h − Spiegel des nächsten Sees/Flusses| + SHORE_DROP · Abstand (Betrag: hangab eines Bergsees ist kein Ufer; Abstand:
+// flaches Ufer läuft über sandHeight / SHORE_DROP m aus, keine Höhenlinien-Ringe). Ohne See in der Nähe = wie früher
+export const SHORE_DROP = 0.15; // m je m
+export const shoreDist = (h, W, sea, lv, d) => h < W ? 0 : lv === undefined ? h - sea : Math.min(h - sea, Math.abs(h - lv) + SHORE_DROP * d);
+
 // Material-Maske des 3D-Auto-Materials (→ Plan/Texturierung.md), RGBA8 linear, dieselben Codierungen wie der Export:
-// R Neigung °/90 (slope in m/m), G Krümmung 128 ± dev/curvScale, B roadMask, A Höhe über dem örtlichen Wasserspiegel
+// R Neigung °/90 (slope in m/m), G Krümmung 128 ± dev/curvScale, B roadMask, A Abstand zum Ufer in m (0 = unter Wasser)
 export const SHORE_RANGE = 10; // m bei A = 255 (Sand-Regler bis 5 m → 4 cm je Stufe)
 export function materialMask(slope, curv, curvScale, road, above) {
     const out = new Uint8Array(slope.length * 4);

@@ -1,5 +1,5 @@
 // Masken (→ Plan/Roadmap.md R8): Ebene = Neigung 0 / Normale oben; Rampe = bekannter Winkel; Kamm hell, Mulde dunkel
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, materialMask, SHORE_RANGE, slopeRelief } from '../src/masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, materialMask, SHORE_RANGE, slopeRelief, nearestWater, shoreDist, SHORE_DROP } from '../src/masks.js';
 
 let fail = 0;
 function check(cond, msg) {
@@ -81,6 +81,25 @@ for (const sign of [1, -1]) {
     check(ch(0) === [0, ...slopeBytes([30, 90])].join(), `Material-Maske R: ${ch(0)}`);
     check(ch(1) === curvatureBytes(c, 1).join(), `Material-Maske G: ${ch(1)}`);
     check(ch(2) === '0,128,255' && ch(3) === '0,128,255', `Material-Maske B ${ch(2)} / A ${ch(3)}`);
+}
+// Nächstes Wasser: Abstand ≈ euklidisch (Chamfer ≤ 8 % drüber), Spiegel des nächsten nassen Pixels; ohne Wasser null
+{
+    check(nearestWater(new Float32Array(81), 9, 0.5) === null, 'nächstes Wasser: ohne Seen null');
+    const N = 41, cell = 0.5, w = new Float32Array(N * N);
+    w[5 * N + 5] = 20; w[30 * N + 35] = 30;
+    const { level, dist } = nearestWater(w, N, cell);
+    let err = 0, lvOk = true;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        const a = Math.hypot(x - 5, y - 5), b = Math.hypot(x - 35, y - 30), e = Math.min(a, b) * cell, i = y * N + x;
+        err = Math.max(err, (dist[i] - e) / Math.max(e, cell));
+        if (Math.abs(a - b) > 2 && level[i] !== (a < b ? 20 : 30)) lvOk = false;
+    }
+    check(err <= 0.085 && err >= -1e-6 && dist[5 * N + 15] === 5, `nächstes Wasser: Abstand ≤ 8 % über euklidisch (${(100 * err).toFixed(1)} %), Achse exakt`);
+    check(lvOk, 'nächstes Wasser: Spiegel des näheren Sees');
+    // Ufer-Abstand: unter Wasser 0; Meer wie früher (h − sea); am See |h − Spiegel| + Abstand; hangab des Sees kein Ufer
+    check(shoreDist(14, 15, 15) === 0 && shoreDist(16.5, 15, 15) === 1.5, 'Ufer-Abstand: unter Wasser 0, Meer h − sea');
+    check(shoreDist(31, 15, 15, 30, 0) === 1 && Math.abs(shoreDist(30, 15, 15, 30, 10) - 10 * SHORE_DROP) < 1e-9, 'Ufer-Abstand am See: Höhe + Entfernung');
+    check(shoreDist(20, 15, 15, 30, 2) === 5, 'Ufer-Abstand hangab eines Bergsees: Meer näher (5 m), kein Sand');
 }
 // slopeRelief: Rampe 30° innen, Relief einer Rampe 0
 {

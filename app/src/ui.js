@@ -78,7 +78,24 @@ export const TABS = {
             ['rimWave', 'Ring variation size (m)', 20, 300, 5, 'Wavelength of the height variation along the ring.'],
         ],
     },
-    Material: {}, // Regler folgen mit R11 T4; Ansicht (Textures) hängt main.js an
+    // ohne Regeneration (cb.material): Farben der Vorschau, Splatmap und Texturen; Ansicht (Textures, Größe) hängt main.js an
+    Material: {
+        'Rock & snow': [
+            ['rockSlope', 'Rock from (°)', 15, 70, 1, 'Slopes steeper than this start to turn into rock.'],
+            ['rockBlend', 'Rock blend (°)', 2, 40, 1, 'Extra steepness until the slope is fully rock.'],
+            ['snowHeight', 'Snow line (m)', 20, 300, 5, 'Height above the water level where the ground is fully snow; the scree and rock zones below move with it.'],
+            ['snowBlend', 'Snow blend (m)', 5, 80, 1, 'Height over which scree turns into snow.'],
+        ],
+        Ground: [
+            ['sandHeight', 'Shore sand (m)', 0, 5, 0.1, 'Sand on the shore up to this height above the local water level (sea, lake, river).'],
+            ['gravelCurv', 'Gravel in hollows (m)', 0, 3, 0.05, 'Hollows deeper than this get gravel (3D textures only). 0 = off.'],
+        ],
+        Textures: [
+            ['texScale', 'Tile size (m)', 1, 16, 0.5, 'Size of one texture repeat on the ground.'],
+            ['texFade', 'Texture distance (m)', 30, 600, 10, 'Beyond this camera distance the flat color map is shown instead of the textures.'],
+            ['texTint', 'Map color', 0, 1, 0.05, 'Tints the textures with the color map (rock, snow and road colors apply up close, no seam at the texture distance). 0 = the textures\' own colors.'],
+        ],
+    },
 };
 
 function el(tag, props = {}, ...kids) {
@@ -140,7 +157,7 @@ export function seedGrid(size, count, current, draw, pick) {
     fill();
 }
 
-// cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), walk(), compare(), exports: {Label: fn},
+// cb: change(), color(), material(), presets: [Namen], preset(name), save(), load(), link(), walk(), compare(), exports: {Label: fn},
 //     exportTargets: {key: Label}, exportTarget(key), exportDetail(1|2), exportSize(px), regenerate()
 // → { guis: {Tab: GUI}, refresh(), status(text), sizes(options, selected), busy(on) }
 export function buildPanel(params, cb) {
@@ -203,7 +220,7 @@ export function buildPanel(params, cb) {
             for (const [key, label, min, max, step, tip] of rows) {
                 const c = typeof params[key] === 'string'
                     ? f.addColor(params, key).onChange(cb.color)
-                    : f.add(params, key, min, max, step).onChange(cb.change);
+                    : f.add(params, key, min, max, step).onChange(tab === 'Material' ? cb.material : cb.change);
                 c.name(label);
                 c.domElement.title = `${tip} (${key})`;
                 c.domElement.dataset.key = key;
