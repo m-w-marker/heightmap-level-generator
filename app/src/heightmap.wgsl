@@ -46,6 +46,9 @@ const LAKE_RES = 128u;    // = PRE (Prepass) in uniforms.js: See-Spiegelfeld
 const RIVER_DEPTH = 0.5;  // Tiefe je m halber Breite (= ¼ Breite)
 const RIVER_BANK = 0.577; // tan 30°: Ufer über dem Spiegel, danach steiler wie die Straßen-Böschung
 const LAKE_EDGE = 0.25;   // bilineare Seemaske: Wasser bis ~¾ Zelle über die Seezellen hinaus
+// m: Fluss-Spiegel unter dem 128²-Spiegel aus hydro.js → das 1024²-Gelände neben dem Bett (Noise ±0,3 m) bleibt trocken,
+// Wasser endet an der glatten Bettkante; sonst endete es am nassen Streifen über tieferer Aue → Zacken im Wasser-Mesh
+const RIVER_SINK = 0.4;
 
 const SLOPE_VAR_WAVE = 40.0; // m
 const SLOPE_MIN = 0.1745;    // 10° in rad
@@ -292,6 +295,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 }
             }
         }
+        rL -= RIVER_SINK;
         let q = min(rD / rW, 1.0);
         h = min(h, select(rL + bank(rD - rW, RIVER_BANK), rL - rW * RIVER_DEPTH * (1.0 - q * q), rD < rW));
         if (rD < rW + RIVER_WET) { wl = max(wl, rL); }

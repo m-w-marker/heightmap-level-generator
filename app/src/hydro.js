@@ -17,6 +17,29 @@ function segDist(px, py, ax, ay, bx, by) {
     return [Math.hypot(px - ax - dx * t, py - ay - dy * t), t];
 }
 
+// Mäander quer zum Lauf: D8-Pfade auf 128² kennen nur 8 Richtungen → Flachlandflüsse wirkten wie Kanäle. Zwei Sinus mit
+// inkommensurablen Wellenlängen (~12× Breite) → nicht periodisch; Amplitude ≤ Breite, an Quelle und Mündung 0, bei mittlerem
+// Gefälle ≥ MEANDER_GRADE gerade (Bergbach). p = RIVER_POINTS × vec4(x, y, Spiegel, halbe Breite), k = Phase je Fluss
+const MEANDER_GRADE = 0.1;
+function meander(p, k) {
+    const n = RIVER_POINTS, len = [0];
+    for (let i = 1; i < n; i++) len.push(len[i - 1] + Math.hypot(p[4 * i] - p[4 * i - 4], p[4 * i + 1] - p[4 * i - 3]));
+    const L = len[n - 1];
+    if (L < 1e-6) return;
+    const flat = Math.max(1 - (p[2] - p[4 * n - 2]) / L / MEANDER_GRADE, 0);
+    const off = [];
+    for (let i = 0; i < n; i++) {
+        const a = Math.max(i - 1, 0), b = Math.min(i + 1, n - 1);
+        const tx = p[4 * b] - p[4 * a], ty = p[4 * b + 1] - p[4 * a + 1], tl = Math.hypot(tx, ty) || 1;
+        const lambda = 24 * p[4 * i + 3]; // 12× Breite
+        const s = len[i] / lambda * 2 * Math.PI;
+        const amp = 2 * p[4 * i + 3] * flat * Math.sin(Math.PI * len[i] / L);
+        const d = amp * (0.6 * Math.sin(s + 1.7 * k) + 0.4 * Math.sin(1.618 * s + 0.9 * k));
+        off.push([-ty / tl * d, tx / tl * d]);
+    }
+    off.forEach(([dx, dy], i) => { p[4 * i] += dx; p[4 * i + 1] += dy; });
+}
+
 // opts: waterLevel, rimZone, riverCatchment (% der Map-Fläche als Einzugsgebiet einer Quelle, 0 = keine Flüsse),
 //       riverWidth (m an der größten Mündung), lakeArea (m² Mindestfläche eines Sees, 0 = keine Seen)
 // → { rivers: Float32Array(MAX_RIVERS·RIVER_POINTS·4) = vec4(x, y, Spiegel m, halbe Breite m), riverCount,
@@ -123,6 +146,7 @@ export function hydrology(terrain, mapSize, opts) {
                 const o = (riverCount * RIVER_POINTS + i) * 4;
                 rivers.set([pts[2 * i], pts[2 * i + 1], level, attr[j][1] + (attr[j + 1][1] - attr[j][1]) * t], o);
             }
+            meander(rivers.subarray(riverCount * RIVER_POINTS * 4, (riverCount + 1) * RIVER_POINTS * 4), riverCount);
             for (let i = 0; i + 1 < RIVER_POINTS; i++) {
                 const o = (riverCount * RIVER_POINTS + i) * 4;
                 segs.push([rivers[o], rivers[o + 1], rivers[o + 4], rivers[o + 5], rivers[o + 2], rivers[o + 6], rivers[o + 3], rivers[o + 7]]);

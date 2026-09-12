@@ -39,7 +39,7 @@ controls.maxPolarAngle = Math.PI / 2 - 0.05;
 controls.minDistance = 40;
 controls.maxDistance = 1200;
 // headless-Prüfung: Kamera setzen, Readback lesen
-if (import.meta.env.DEV) window.dbg = { camera, controls, get heights() { return heights; }, get roadMask() { return roadMask; }, get maxH() { return params.maxH; },
+if (import.meta.env.DEV) window.dbg = { camera, controls, scene, get heights() { return heights; }, get roadMask() { return roadMask; }, get maxH() { return params.maxH; },
     get params() { return params; }, get terrain128() { return terrain128; }, get water() { return water; } };
 
 // Sonne ≈ 30° hoch + schwächeres Himmelslicht → Relief auch bei flachen Hügeln lesbar
@@ -241,6 +241,12 @@ async function generate() {
     }
     terrain = buildTerrainMesh();
     scene.add(terrain);
+    if (waterMesh) {
+        scene.remove(waterMesh);
+        waterMesh.geometry.dispose();
+    }
+    waterMesh = buildWaterMesh();
+    if (waterMesh) scene.add(waterMesh);
     const totalMs = performance.now() - t0;
     console.log(`Regeneration: ${totalMs.toFixed(0)} ms`);
     panel.status(`GPU ${map.gpuMs.toFixed(0)} ms · Roads ${map.roadMs.toFixed(0)} ms · Total ${totalMs.toFixed(0)} ms`);
@@ -451,6 +457,48 @@ function buildTerrainMesh() {
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     geo.computeVertexNormals();
     return new THREE.Mesh(geo, terrainMat);
+}
+
+// Wasserspiegel als eigenes Mesh (→ Plan/Fluesse.md): Vertex-Gitter wie das Terrain, y = Spiegel des Pixels; nur Dreiecke
+// mit mindestens einer nassen Ecke → trockenes Land wird nicht doppelt gezeichnet, unter dem Gelände verdeckt der Tiefentest.
+// vereinfacht: nicht im glTF-Export (nur Terrain)
+const waterMat = new THREE.MeshStandardMaterial({ color: 0x3d78b0, roughness: 0.2, metalness: 0, transparent: true, opacity: 0.78, vertexColors: true });
+const WATER_SINK = 0.05; // m unter dem Gelände für trockene Randecken
+const WATER_FADE = 0.4;  // m Wassertiefe bis volle Deckkraft
+let waterMesh = null;
+function buildWaterMesh() {
+    const W = Float32Array.from(water, w => spiegel(w, params.waterLevel)), ground = terrain.geometry.attributes.position.array;
+    const pos = new Float32Array(TN * TN * 3), wet = new Uint8Array(TN * TN), idx = new Uint32Array((TN - 1) * (TN - 1) * 6);
+    let ni = 0;
+    // Spiegel je Ecke = Maximum der 4 umliegenden Texel, nicht bilinear: bilinear mischt am Rand des nassen Streifens den
+    // Fluss- mit dem Meeresspiegel → Randecken zu tief, gezackte Fläche
+    const at = (x, y) => W[Math.min(Math.max(y, 0), RES - 1) * RES + Math.min(Math.max(x, 0), RES - 1)];
+    for (let j = 0; j < TN; j++) for (let i = 0; i < TN; i++) {
+        const k = j * TN + i, fx = i / (TN - 1) * RES - 0.5, fy = j / (TN - 1) * RES - 0.5, x0 = Math.floor(fx), y0 = Math.floor(fy);
+        const y = Math.max(at(x0, y0), at(x0 + 1, y0), at(x0, y0 + 1), at(x0 + 1, y0 + 1));
+        wet[k] = y > ground[3 * k + 1];
+        pos[3 * k] = ground[3 * k];
+        // trockene Ecke knapp unter dem Gelände statt auf ihrem (tieferen) Spiegel → die Fläche schneidet das Ufer an der
+        // Höhenlinie; sonst fällt sie am Rand des nassen Flussstreifens als Wand auf Meereshöhe ab
+        pos[3 * k + 1] = wet[k] ? y : ground[3 * k + 1] - WATER_SINK;
+        pos[3 * k + 2] = ground[3 * k + 2];
+    }
+    for (let j = 0; j < TN - 1; j++) for (let i = 0; i < TN - 1; i++) {
+        const a = j * TN + i, b = a + 1, c = a + TN, d = c + 1;
+        if (wet[a] || wet[b] || wet[c] || wet[d]) { idx.set([a, c, b, c, d, b], ni); ni += 6; } // Wicklung wie das Terrain
+    }
+    if (!ni) return null;
+    // Alpha nach Wassertiefe: das Ufer läuft aus statt als Zickzack der Gitterlinien (zwei fast parallele Flächen)
+    const col = new Float32Array(TN * TN * 4);
+    for (let k = 0; k < TN * TN; k++) {
+        col.set([1, 1, 1, Math.min(Math.max((pos[3 * k + 1] - ground[3 * k + 1]) / WATER_FADE, 0), 1)], 4 * k);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    geo.setIndex(new THREE.BufferAttribute(idx.slice(0, ni), 1));
+    geo.computeVertexNormals();
+    return new THREE.Mesh(geo, waterMat);
 }
 
 // Höhe des angezeigten Meshes (Dreiecke wie oben) in m; der 1024²-Readback weicht an Böschungen ±12 cm davon ab

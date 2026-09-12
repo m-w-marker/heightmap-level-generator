@@ -62,7 +62,10 @@ Wasserspiegel; 2D-Vorschau, Splatmap (Kanal B) und Straßen kennen das neue Wass
   Straße nicht absenkte; Seemaske bilinear ≥ 0,25 statt 3×3-Quadrat; `water` 0 = Meer → exakt; Regler World/Rivers & lakes;
   headless 6 Presets bei 2 %: Flüsse nur fallend, enden an Meer/See/Ringfuß, Fahrbahn 0 Pixel unter Wasser, Level GPU vs. CPU
   0 Ausreißer; aus: heights + roadMask + Vorschau-Hash gleich dem F2-Stand) — geprüft am 2026-09-12
-- [ ] F4 3D-Wasserspiegel — geprüft am
+- [x] F4 3D-Wasserspiegel (TN²-Mesh nur mit nassen Dreiecken; Spiegel je Ecke = Max der 4 Texel statt bilinear, trockene
+  Randecken knapp unter dem Gelände, Alpha nach Tiefe 0–0,4 m → Ufer ohne Zickzack; Fluss-Spiegel im Shader 0,4 m unter dem
+  128²-Spiegel (`RIVER_SINK`) → Wasser bleibt im Bett; Mäander quer zum Lauf bis 1× Breite, bei Gefälle ≥ 10 % gerade;
+  headless fern + nah Lakes / Defaults / Rolling hills / Mountains, Kriterien aus F3 weiter 0) — geprüft am 2026-09-12
 - [ ] F5 Tuning + Preset — geprüft am
 - [ ] F6 Doku — geprüft am
 
