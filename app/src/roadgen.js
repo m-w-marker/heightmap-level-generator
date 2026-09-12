@@ -24,7 +24,7 @@ function mulberry32(seed) {
 }
 
 // Punktliste (x, y, …) auf n Punkte mit gleichem Bogenabstand resample
-function resample(pts, n) {
+export function resample(pts, n) {
     const m = pts.length / 2;
     const cum = new Float64Array(m);
     for (let i = 1; i < m; i++) {
@@ -45,7 +45,7 @@ function resample(pts, n) {
 }
 
 // Corner-Cutting (Endpunkte bleiben) — glättet Dijkstras Treppensteg-Pfade
-function chaikin(pts, iterations) {
+export function chaikin(pts, iterations) {
     let p = pts.slice();
     for (let k = 0; k < iterations; k++) {
         const m = p.length / 2;
@@ -361,7 +361,7 @@ function dijkstra(terrain, mapSize, start, goal, opts, field) {
 }
 
 // Min-Heap mit decrease-key (pos): jeder Knoten max. 1× im Heap → Größe ≤ n (Arrays fix n)
-function minHeap(n) {
+export function minHeap(n) {
     const heapN = new Int32Array(n);
     const heapK = new Float64Array(n);
     const pos = new Int32Array(n).fill(-1);

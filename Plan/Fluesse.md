@@ -51,7 +51,9 @@ Wasserspiegel; 2D-Vorschau, Splatmap (Kanal B) und Straßen kennen das neue Wass
 6. F6 Doku: `.clinerules/hydro.md` (paths: hydro.js, Test), wgsl.md-Layout → Prüfung: `check` grün
 
 ## Abgeschlossen
-- [ ] F1 hydro.js — geprüft am
+- [x] F1 hydro.js (Priority-Flood mit `minHeap`, `chaikin`, `resample` aus roadgen exportiert; Test: Tal-Fluss bis Ringfuß,
+  Spiegel fallend, Breite bis riverWidth, Grube → See auf Überlauf-Höhe, Meer-Mündung, aus = nichts, verrauscht 15,5 ms,
+  deterministisch) — geprüft am 2026-09-12
 - [ ] F2 Shader + Uniform — geprüft am
 - [ ] F3 Einbindung — geprüft am
 - [ ] F4 3D-Wasserspiegel — geprüft am
