@@ -1,14 +1,15 @@
 // Auto-Material des 3D-Terrains (→ Plan/Texturierung.md): three NodeMaterial (TSL), weil es unter WebGPU kein
 // onBeforeCompile gibt. Terrain-Mesh ohne Transformation → lokal = Welt
 import { MeshStandardNodeMaterial, DataArrayTexture, Vector3, RepeatWrapping, LinearFilter, LinearMipmapLinearFilter, SRGBColorSpace, NoColorSpace } from 'three/webgpu';
-import { texture, uv, uniform, positionWorld, cameraPosition, float, vec3, clamp, max, pow, tan, smoothstep, mix, luminance, select } from 'three/tsl';
+import { texture, uv, uniform, positionWorld, cameraPosition, normalLocal, transformNormalToView, float, vec3, clamp, max, pow, tan, smoothstep, mix, luminance, select } from 'three/tsl';
 import { SHORE_RANGE } from './masks.js';
 
 // Ebene im Texture-Array = Ordner in public/textures (austauschbar: albedo.jpg sRGB + normal.jpg OpenGL, beliebige Größe)
 export const LAYERS = ['grass', 'rock', 'gravel', 'sand', 'snow', 'road'];
 const L = Object.fromEntries(LAYERS.map((l, i) => [l, i]));
 const SHORE_WET = 0.3; // m über dem Ufer-Spiegel: Übergang Sandfarbe (unter Wasser) → Farbkarte
-const BLEND_LUMA = 0.3, BLEND_SHARP = 4; // Höhen-Blend: helle Texel (Steine) setzen sich im Übergang durch statt weich zu mischen
+const BLEND_LUMA = 0.3, BLEND_SHARP = 4;
+const TRI_SHARP = 4; // Triplanar: Achsen-Gewicht |N|^4 → schmale Übergangszone zwischen den Projektionen // Höhen-Blend: helle Texel (Steine) setzen sich im Übergang durch statt weich zu mischen
 
 // Alle Schichten einer Art als RGBA8-Array size², Zeile 0 = Bildoberkante; eigene Dateien werden auf size skaliert
 async function loadArray(kind, size, srgb, anisotropy) {
@@ -56,7 +57,7 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
     const color = texture(colorTex, uv()), mask = texture(maskTex, uv());
     const mat = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
     mat.colorNode = color;
-    let albedo = null;
+    let albedo = null, normals = null;
     const self = { mat, ready: false, size: 0 };
 
     function build() {
@@ -77,8 +78,21 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
         ];
         let w = LAYERS.map((_, i) => float(i === L.grass ? 1 : 0));
         for (const [k, a] of over) w = w.map((v, i) => v.mul(float(1).sub(a)).add(i === k ? a : 0));
-        const st = positionWorld.xz.div(u.texScale);
-        const tex = LAYERS.map((_, i) => albedo.sample(st).depth(i));
+        // Projektion: planar über XZ; Fels triplanar (Klippen, Böschungen), Achsen-Gewichte |N|⁴
+        const N = normalLocal.normalize();
+        const p = positionWorld.div(u.texScale), uvX = p.zy, uvY = p.xz, uvZ = p.xy;
+        const bw = pow(N.abs(), vec3(TRI_SHARP)), bl = bw.div(bw.x.add(bw.y).add(bw.z));
+        const tri = (arr, i, f) => f(arr.sample(uvX).depth(i), 'x').mul(bl.x).add(f(arr.sample(uvY).depth(i), 'y').mul(bl.y)).add(f(arr.sample(uvZ).depth(i), 'z').mul(bl.z));
+        const tex = LAYERS.map((_, i) => i === L.rock ? tri(albedo, i, s => s) : albedo.sample(uvY).depth(i));
+        // Detail-Normalen: OpenGL-Normal Map (u, v, oben), v gespiegelt (Zeile 0 = Bildoberkante liegt bei v = 0);
+        // Whiteout-Blend je Projektion (B. Golus) → Welt-Normale
+        const unpack = s => vec3(s.x.mul(2).sub(1), s.y.mul(2).sub(1).negate(), s.z.mul(2).sub(1));
+        const white = {
+            x: t => vec3(t.z.abs().mul(N.x), t.y.add(N.y), t.x.add(N.z)), // uv = (z, y)
+            y: t => vec3(t.x.add(N.x), t.z.abs().mul(N.y), t.y.add(N.z)), // uv = (x, z)
+            z: t => vec3(t.x.add(N.x), t.y.add(N.y), t.z.abs().mul(N.z)), // uv = (x, y)
+        };
+        const nrm = LAYERS.map((_, i) => (i === L.rock ? tri(normals, i, (s, a) => white[a](unpack(s))) : white.y(unpack(normals.sample(uvY).depth(i)))).normalize());
         const b = w.map((v, i) => pow(v.mul(luminance(tex[i].rgb).add(BLEND_LUMA)), BLEND_SHARP));
         const sum = b.reduce((a, v) => a.add(v)).max(1e-6);
         const near = b.reduce((a, v, i) => a.add(tex[i].rgb.mul(v)), vec3(0)).div(sum);
@@ -87,20 +101,25 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
         // ersten SHORE_WET m, A ist linear gefiltert → keine Pixeltreppe an der Wasserlinie
         const target = mix(u.sandColor, color.rgb, smoothstep(0, SHORE_WET / SHORE_RANGE, mask.a));
         const tinted = near.mul(mix(vec3(1), target.div(avg), u.texTint));
-        const d = positionWorld.distance(cameraPosition);
-        mat.colorNode = mix(tinted, color.rgb, smoothstep(u.texFade.mul(0.5), u.texFade, d));
+        const fade = smoothstep(u.texFade.mul(0.5), u.texFade, positionWorld.distance(cameraPosition));
+        mat.colorNode = mix(tinted, color.rgb, fade);
+        const detail = b.reduce((a, v, i) => a.add(nrm[i].mul(v)), vec3(0)).normalize();
+        mat.normalNode = transformNormalToView(mix(detail, N, fade).normalize()); // Mesh ohne Transformation: lokal = Welt
         mat.needsUpdate = true;
     }
 
     // size = Kantenlänge der Schicht-Texturen (1024 / 2048); lädt neu, erster Aufruf baut den Shader
     self.load = async size => {
-        const { t, mean: m } = await loadArray('albedo', size, true, anisotropy);
-        m.forEach((c, i) => mean[i].value.set(...c));
+        const [a, n] = [await loadArray('albedo', size, true, anisotropy), await loadArray('normal', size, false, anisotropy)];
+        a.mean.forEach((c, i) => mean[i].value.set(...c));
         if (albedo) {
             albedo.value.dispose();
-            albedo.value = t;
+            normals.value.dispose();
+            albedo.value = a.t;
+            normals.value = n.t;
         } else {
-            albedo = texture(t);
+            albedo = texture(a.t);
+            normals = texture(n.t);
             build();
         }
         self.size = size;
