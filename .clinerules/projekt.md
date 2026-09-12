@@ -1,7 +1,7 @@
 # Projekt: WebGPU Heightmap Generator
 
-Prozeduraler Heightmap-Generator auf WebGPU-Compute (WGSL): 1024² f32 für eine 400×400-m-Map.
-Straßen, Abrisskanten, Hügel, Berge, Rand-Ring. Live-Tuning per GUI, Seed-basiert.
+Prozeduraler Heightmap-Generator auf WebGPU-Compute (WGSL): 1024² f32 über eine Map von 200–1000 m (Default 400 m).
+Straßen, Abrisskanten, Hügel, Berge, Erosion, Flüsse/Seen, Rand-Ring. Live-Tuning per GUI, Seed-basiert.
 
 ## Wo steht was
 - `.clinerules/` — Regeln, werden automatisch geladen. Thema-Regeln (mit `paths:`) laden nur, wenn passende
@@ -14,15 +14,18 @@ Straßen, Abrisskanten, Hügel, Berge, Rand-Ring. Live-Tuning per GUI, Seed-basi
 `npm run dev` (→ localhost:5173) · `npm run build` · `npm run sanity` · `npm run check` (alles, sobald vorhanden)
 
 ## Datenfluss
-Seed + Params → Prepass 128² (ohne Straßen/Rand-Ring) → `roadgen.js` (Orte + Netz, Dijkstra → Polylines
-+ Levels) → Uniform-Buffer → `heightmap.wgsl` (Compute 16×16)
-→ Storage `heights` + `roadMask` → Readback → 2D-Preview (Canvas 1024²) + 3D-Mesh (512², `computeVertexNormals`, Preview-Pixel als Farbtextur)
+Seed + Params → (Erosion 512², `erosion.wgsl`) → Prepass 128² (ohne Straßen) → `hydro.js` (Flüsse, Seen) → `roadgen.js`
+(Orte + Netz, Dijkstra → Polylines + Levels) → Uniform-Buffer → `heightmap.wgsl` (Compute 16×16)
+→ Storage `heights` + `roadMask` + `water` → Readback → 2D-Preview (Canvas 1024²) + 3D-Mesh (512², `computeVertexNormals`,
+Preview-Pixel als Farbtextur) + Wasserspiegel-Mesh
 
 ## Konventionen
 - 1 Unit = 1 m. Höhen im Buffer normalisiert 0–1 (× `maxH`, automatisch = obere Schranke → kein Clamp oben). Wasser-Spiegel 15 m.
 - Terrain-Parameter in Metern (Amplitude = p95) bzw. Abdeckung in % der Map, nicht in UV oder Noise-Einheiten.
 - Straßen: Fahrbahn auf terrain-folgendem Level (geglättetes Feld + `roadOffset`), Böschung mit fester Neigung; gewinnt über allem.
 - 3D-Geometrie CPU-seitig aus der Heightmap (nicht `displacementMap`) → korrekte Normals.
+- Map-Größe = `params.mapSize`, NICHT 400 hart verdrahten und Meter-Konstanten nicht aus Pixeln ableiten: die Auflösung
+  bleibt 1024², ein Pixel wächst mit der Map.
 
 ## Pitfalls (three r186 / WebGPU)
 - `await renderer.init()` vor Nutzung. Device: `renderer.backend.device`, Queue: `device.queue` (`renderer.gpu` gibt es nicht).

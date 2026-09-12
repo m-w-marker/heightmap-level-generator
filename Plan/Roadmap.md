@@ -87,7 +87,8 @@ headless: von oben keine Kreise mehr (auch Radius 15 im Berg-Terrain), Kern-Span
   additiv, aus = bitgleich; +24 ms bei 300 Iterationen; Preset „Eroded mountains“; Flow-Map-Export log/p99) — geprüft am 2026-09-12
 - [x] R16 Flüsse/Seen (Detailplan `Plan/erledigt/Fluesse.md`: Priority-Flood auf dem Prepass, Flüsse als Polylinien mit
   Mäander, Bergseen, echter 3D-Wasserspiegel, Straßen nie unter Wasser, aus = bitgleich; Preset „River valley“) — geprüft am 2026-09-12
-- [ ] R17 Map-Größe — geprüft am
+- [x] R17 Map-Größe (Detailplan `Plan/erledigt/MapGroesse.md`: Regler 200–1000 m, Auflösungen fest, 400 m bitgleich,
+  roadgen-/hydro-Test bei 400 + 800 m, Fahrbahn- und Flussbreite in m gleich) — geprüft am 2026-09-12
 - [ ] R18 README — geprüft am
 
 <!-- fertig: git mv Plan/<Datei>.md Plan/erledigt/ -->

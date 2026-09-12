@@ -1,6 +1,6 @@
 # Plan: Map-Größe variabel (R17)
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-12
 
 ## Ziel
@@ -34,6 +34,15 @@ Ringbreite, Ortsabstand, Flussbreite) behalten ihre Bedeutung: eine größere Ma
   roadMask bitgleich, Vorschau-Hash Defaults/Lakes/River valley gleich HEAD) — geprüft am 2026-09-12
 - [x] M2 Tests bei 2 Größen (roadgen- und hydro-Test mit Map-Größe als Argument, Positionen × s, Formgrößen in m;
   sanity ruft 400 + 800) — geprüft am 2026-09-12
-- [ ] M3 headless 400 vs. 800 — geprüft am
+- [x] M3 headless 400 vs. 800 — geprüft am 2026-09-12
+
+| Preset | Map m | Höhenspanne p5–p95 m | Fahrbahn m (quer, Median) | Ring m (halbe Höhe) | Fluss m (Messung / Soll) |
+|---|---|---|---|---|---|
+| Defaults | 400 / 800 | 19,3 / 19,3 | 5,08 / 5,08 | 22 / 22 | – |
+| Mountains | 400 / 800 | 81,0 / 102,6 | 5,27 / 5,27 | 22 / 28 | – |
+| River valley | 400 / 800 | 27,9 / 28,2 | 5,18 / 5,27 | 30 / 30 | 4,39 / 4,32 · 3,13 / 2,92 |
+
+Mountains: Spanne und Ringprofil hängen an wenigen Bergclustern (400 m ≈ 2 Cluster-Wellenlängen, Berge im Ringband) →
+Stichprobe, keine Skalierung. Flüsse: Breite folgt dem Soll; der Median sinkt bei 800 m, weil mehr kleine Flüsse entstehen.
 
 <!-- fertig: git mv Plan/<Datei>.md Plan/erledigt/ -->
