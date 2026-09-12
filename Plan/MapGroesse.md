@@ -32,7 +32,8 @@ Ringbreite, Ortsabstand, Flussbreite) behalten ihre Bedeutung: eine größere Ma
 - [x] M1 mapSize durchgereicht (`MAP` → `params.mapSize` in Compute, Hydro, Routing, Mesh, Walk-Grenze, Export, Statistik;
   `RELIEF_M` fest 9,375 m; `fitView` für Kamera/Nebel/Zoom; Regler World/Map 200–1000 m; 400 m: 7 Presets heights +
   roadMask bitgleich, Vorschau-Hash Defaults/Lakes/River valley gleich HEAD) — geprüft am 2026-09-12
-- [ ] M2 Tests bei 2 Größen — geprüft am
+- [x] M2 Tests bei 2 Größen (roadgen- und hydro-Test mit Map-Größe als Argument, Positionen × s, Formgrößen in m;
+  sanity ruft 400 + 800) — geprüft am 2026-09-12
 - [ ] M3 headless 400 vs. 800 — geprüft am
 
 <!-- fertig: git mv Plan/<Datei>.md Plan/erledigt/ -->

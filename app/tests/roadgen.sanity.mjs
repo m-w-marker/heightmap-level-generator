@@ -2,8 +2,9 @@
 // in Map-Grenzen, deterministisch, Hügel-Umgehung, kein Parallelband, Level = Feld an der Position, Laufzeit
 import { generateRoads, planNetwork, sampleTerrain, MAX_ROADS, ROAD_POINTS } from '../src/roadgen.js';
 
+// Map-Größe als Argument (→ Plan/MapGroesse.md): Positionen skalieren mit s, Formgrößen bleiben in Metern
 const seed = 1337;
-const mapSize = 400;
+const mapSize = +(process.argv[2] ?? 400), s = mapSize / 400;
 const N = 128;
 const opts = {
     waterLevel: 15, roadOffset: 2, roadTolerance: 0.7, levelSmoothing: 12, slopePenalty: 5, waterAvoid: 2, roadMaxGrade: 12,
@@ -24,12 +25,12 @@ function flatTerrain() {
     return { size: N, data: new Float32Array(N * N).fill(30) };
 }
 
-// 60-m-Hügel bei (200,150), σ 25 m — Umgehung immer günstiger als Überquerung (5·2·60 m Strafe)
+// 60-m-Hügel bei (200,150)·s, σ 25 m — Umgehung immer günstiger als Überquerung (5·2·60 m Strafe)
 function bumpTerrain() {
     const data = new Float32Array(N * N);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const x = (i + 0.5) * mapSize / N, y = (j + 0.5) * mapSize / N;
-        const d = Math.hypot(x - 200, y - 150);
+        const d = Math.hypot(x - 200 * s, y - 150 * s);
         data[j * N + i] = 30 + 60 * Math.exp(-((d / 25) ** 2));
     }
     return { size: N, data };
@@ -168,18 +169,18 @@ for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
     check(deepest >= opts.rimZone - 2, `Straßen bleiben aus dem Ring: min. Kantenabstand ${deepest.toFixed(1)} m ≥ ${opts.rimZone - 2} m`);
 }
 
-// Steigung (→ Plan/StrassenSteigung.md G1): Plateau 60 m (x < 200) | Ebene 20 m, Klippe 6 m breit; mit Lücke
+// Steigung (→ Plan/StrassenSteigung.md G1): Plateau 60 m (x < CX) | Ebene 20 m, Klippe 6 m breit; mit Lücke
 // = Rampe über 300 m um y = GAP_Y (13 %). Straßen queren die Klippenlinie in der Lücke; Level-Schritt ≤ Maximum,
 // auch ohne Lücke (Querung unvermeidbar → Rampe aus Abtrag + Auftrag)
 {
-    const GAP_Y = 280, GAP_CORE = 35, GAP_FADE = 40;
+    const CX = 200 * s, GAP_Y = 280 * s, GAP_CORE = 35, GAP_FADE = 40;
     const cliffTerrain = gap => {
         const data = new Float32Array(N * N);
         for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
             const x = (i + 0.5) * mapSize / N, y = (j + 0.5) * mapSize / N;
             const g = gap ? Math.min(Math.max(1 - (Math.abs(y - GAP_Y) - GAP_CORE) / GAP_FADE, 0), 1) : 0;
             const w = 3 + 147 * g;
-            data[j * N + i] = 20 + 40 * Math.min(Math.max((200 + w - x) / (2 * w), 0), 1);
+            data[j * N + i] = 20 + 40 * Math.min(Math.max((CX + w - x) / (2 * w), 0), 1);
         }
         return { size: N, data };
     };
@@ -193,8 +194,8 @@ for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
             for (let i = 0; i + 1 < ROAD_POINTS; i++) {
                 const ax = pts[2 * i], bx = pts[2 * i + 2], ds = Math.hypot(bx - ax, pts[2 * i + 3] - pts[2 * i + 1]);
                 worst = Math.max(worst, Math.abs(lv[i + 1] - lv[i]) / Math.max(ds, 1e-6));
-                if ((ax - 200) * (bx - 200) < 0) {
-                    const y = pts[2 * i + 1] + (pts[2 * i + 3] - pts[2 * i + 1]) * (200 - ax) / (bx - ax);
+                if ((ax - CX) * (bx - CX) < 0) {
+                    const y = pts[2 * i + 1] + (pts[2 * i + 3] - pts[2 * i + 1]) * (CX - ax) / (bx - ax);
                     crossings++;
                     if (Math.abs(y - GAP_Y) > GAP_CORE + GAP_FADE) outside++;
                 }
@@ -222,9 +223,9 @@ for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
         let far = 0, dev = 0;
         for (let k = 0; k < res.count * ROAD_POINTS; k++) {
             const x = res.points[2 * k];
-            if (Math.abs(x - 200) <= reach) continue;
+            if (Math.abs(x - CX) <= reach) continue;
             far++;
-            dev = Math.max(dev, Math.abs(res.levels[k] - (x < 200 ? 60 : 20) - sopts.roadOffset));
+            dev = Math.max(dev, Math.abs(res.levels[k] - (x < CX ? 60 : 20) - sopts.roadOffset));
         }
         check(far > 0 && dev <= 0.3, `Rampe mittig: ${far} Punkte > ${reach.toFixed(0)} m von der Klippe, max. Abweichung ${dev.toFixed(2)} m ≤ 0,3 m`);
     }
@@ -233,11 +234,11 @@ for (const [name, res] of [['flach', a], ['Hügel', bumpRes]]) {
 // Netz-Planung (→ Plan/TerrainStrassennetz.md N1): Orte trocken/flach/außerhalb Randzone, Mindestabstand,
 // Ausfahrten am Rand, Graph zusammenhängend, deterministisch
 {
-    // flach 30 m + See (10 m) bei (130,130) r 55 + steiler Hügel bei (280,270)
+    // flach 30 m + See (10 m) bei (130,130)·s r 55 + steiler Hügel bei (280,270)·s
     const data = new Float32Array(N * N);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const x = (i + 0.5) * mapSize / N, y = (j + 0.5) * mapSize / N;
-        data[j * N + i] = Math.hypot(x - 130, y - 130) < 55 ? 10 : 30 + 60 * Math.exp(-((Math.hypot(x - 280, y - 270) / 25) ** 2));
+        data[j * N + i] = Math.hypot(x - 130 * s, y - 130 * s) < 55 ? 10 : 30 + 60 * Math.exp(-((Math.hypot(x - 280 * s, y - 270 * s) / 25) ** 2));
     }
     const terr = { size: N, data };
     const nopts = { waterLevel: 15, rimZone: 45, townCount: 6, townSpacing: 60, exitCount: 3, extraLinks: 2 };
@@ -280,4 +281,4 @@ if (fail) {
     console.error(`${fail} Checks fehlgeschlagen`);
     process.exit(1);
 }
-console.log(`roadgen-Sanity: OK — Netz (${a.count} Straßen), Knoten→Knoten, deterministisch, Hügel-Umgehung, kein Parallelband, Level-Feld, Orts-Level, Randzone, Laufzeit`);
+console.log(`roadgen-Sanity (${mapSize} m): OK — Netz (${a.count} Straßen), Knoten→Knoten, deterministisch, Hügel-Umgehung, kein Parallelband, Level-Feld, Orts-Level, Randzone, Laufzeit`);
