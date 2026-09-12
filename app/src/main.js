@@ -50,20 +50,21 @@ const RES = 1024;
 const MAP = 400;
 
 const params = {
+    // Start = flaches Hügelland mit etwas Wasser (Seed 1337: ~5 %); Presets setzen ihre Terrain-Werte selbst
     seed: 1337,
-    baseLevel: 30,
-    hillAmp: 8,
-    hillWave: 120,
-    hillRoughness: 0.5, // Oktaven-Gain: 0.25 glatt rollend … 0.65 zerklüftet
-    mountainAmp: 60,
+    baseLevel: 17.5, // 2,5 m über waterLevel → Senken werden Seen
+    hillAmp: 6,
+    hillWave: 110,
+    hillRoughness: 0.4, // Oktaven-Gain: 0.25 glatt rollend … 0.65 zerklüftet
+    mountainAmp: 18,
     mountainWave: 180,
     clusterWave: 220,
-    mountainCoverage: 30,
-    cliffDrop: 20,
+    mountainCoverage: 12,
+    cliffDrop: 4,
     cliffWave: 90,
     cliffWidth: 15,
     cliffAreaWave: 160,
-    cliffCoverage: 30,
+    cliffCoverage: 8,
     rimAmp: 40,
     rimZone: 45,
     rimWave: 90,
@@ -81,7 +82,7 @@ const params = {
     waterAvoid: 2,
     townCount: 5,
     townSpacing: 80,
-    clearingRadius: 15, // m flach um jeden Ort (→ Plan/Roadmap.md R12)
+    clearingRadius: 8, // m flach um jeden Ort (→ Plan/Roadmap.md R12); größer wirkt am Hang wie ein Platz im Berg
     exitCount: 3,
     extraLinks: 2,
     reuse: 0.4,
@@ -423,15 +424,15 @@ async function runGenerate() {
 
 // Presets = Startwerte (inkl. Seed) + Overrides (→ Plan/PresetsAusfahrten.md, Plan/UI.md)
 const PRESETS = {
-    'Rolling hills': { hillAmp: 9, hillWave: 90, hillRoughness: 0.35, mountainAmp: 25, mountainWave: 200, clusterWave: 250,
+    'Rolling hills': { baseLevel: 30, hillAmp: 9, hillWave: 90, hillRoughness: 0.35, mountainAmp: 25, mountainWave: 200, clusterWave: 250,
         mountainCoverage: 25, cliffDrop: 5, cliffWidth: 20, cliffCoverage: 10, rimAmp: 35, rimZone: 60,
         townCount: 6, townSpacing: 70, extraLinks: 3, roadSlopeVar: 15 },
     'Pasture': { baseLevel: 25, hillAmp: 4, hillWave: 100, hillRoughness: 0.3, mountainAmp: 0, mountainCoverage: 0,
         cliffDrop: 0, cliffCoverage: 0, rimAmp: 25, rimZone: 70, rimWave: 120, townCount: 4, townSpacing: 90, extraLinks: 1 },
-    'Mountains': { baseLevel: 25, hillAmp: 12, hillRoughness: 0.6, mountainAmp: 100, mountainWave: 200, clusterWave: 260,
+    'Mountains': { baseLevel: 25, hillAmp: 12, hillWave: 120, hillRoughness: 0.6, mountainAmp: 100, mountainWave: 200, clusterWave: 260,
         mountainCoverage: 45, cliffDrop: 15, cliffCoverage: 15, rimAmp: 70, rimZone: 60,
         townCount: 4, townSpacing: 60, slopePenalty: 7, extraLinks: 1 },
-    'Canyon / Plateaus': { baseLevel: 45, hillAmp: 3, hillRoughness: 0.35, mountainAmp: 0, mountainCoverage: 0,
+    'Canyon / Plateaus': { baseLevel: 45, hillAmp: 3, hillWave: 120, hillRoughness: 0.35, mountainAmp: 0, mountainCoverage: 0,
         cliffDrop: 45, cliffWave: 120, cliffWidth: 8, cliffAreaWave: 220, cliffCoverage: 70, rimAmp: 30,
         townCount: 5, slopePenalty: 5, roadSlopeVar: 10, roadMaxGrade: 25 }, // 12 % → Rampen ~375 m je Klippe
     'Lakes': { baseLevel: 18.5, hillAmp: 6, hillWave: 110, hillRoughness: 0.35, mountainAmp: 15, mountainCoverage: 10,

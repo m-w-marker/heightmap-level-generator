@@ -40,6 +40,7 @@ const SLOPE_VAR_WAVE = 40.0; // m
 const SLOPE_MIN = 0.1745;    // 10° in rad
 const SLOPE_MAX = 1.0472;    // 60° in rad (steiler → senkrechte Streifenwände im 512²-Mesh)
 const BANK_CURVE = 10.0;     // m: Böschungsneigung (tan) wächst je BANK_CURVE m Abstand um 1 (→ Plan/Boeschung.md)
+const CLEARING_BANK = 0.268; // tan 15°: Lichtungsrand startet flacher als die Straßen-Böschung → keine Gruben am Hang
 
 // Punkt / Ort = vec4(x, y, level m, 0)
 // vec4 statt vec2: im uniform-Adressraum muss der Array-Stride ein Vielfaches von 16 sein (→ .clinerules/wgsl.md)
@@ -159,20 +160,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let band = max(u.params.cliffWidth * u.params.cliffScale, 0.02);
     h += cMask * (smoothstep(0.5 - band, 0.5 + band, cn) * 2.0 - 1.0) * u.params.cliffDrop * 0.5;
 
-    // Böschungsneigung am Rand von Fahrbahn und Lichtung; schwankt entlang der Straße (Noise, Wellenlänge
-    // SLOPE_VAR_WAVE) → mal Schulter, mal Abrisskante. Schwankung auf den Abstand zu SLOPE_MIN/MAX begrenzt
-    // (hinterher klemmen → Winkel klebt an der Grenze)
+    // Böschungsneigung am Fahrbahnrand; schwankt entlang der Straße (Noise, Wellenlänge SLOPE_VAR_WAVE) → mal Schulter,
+    // mal Abrisskante. Schwankung auf den Abstand zu SLOPE_MIN/MAX begrenzt (hinterher klemmen → Winkel klebt an der Grenze)
     let ang0 = clamp(u.params.roadSlope, SLOPE_MIN, SLOPE_MAX);
     let vary = min(u.params.roadSlopeVar, min(ang0 - SLOPE_MIN, SLOPE_MAX - ang0));
     let s0 = tan(ang0 + vary * vnoise(w / SLOPE_VAR_WAVE, layerKey(6u)));
 
-    // 3b) Lichtungen: Ort flach auf dem Level seiner Straßen-Enden, Böschung wie an der Straße (Kegel, keine feste
-    // Breite → keine Wände am Hang); vor Rand-Ring (bleibt geschlossen) und Straßen (gewinnen weiter) (→ Plan/Roadmap.md R12)
+    // 3b) Lichtungen: Ort flach auf dem Level seiner Straßen-Enden, Rand als Kegel wie die Böschung (keine feste Breite →
+    // keine Wände am Hang), aber flach ab CLEARING_BANK → läuft aus statt Grube; vor Rand-Ring (bleibt geschlossen) und
+    // Straßen (gewinnen weiter) (→ Plan/Roadmap.md R12)
     let cr = u.params.clearingRadius;
     let nTowns = select(0u, min(u32(u.params.clearingCount), MAX_TOWNS), cr > 0.0); // Radius 0 = aus
     for (var t = 0u; t < nTowns; t = t + 1u) {
         let c = u.towns[t];
-        let e = bank(max(length(w - c.xy) - cr, 0.0), s0);
+        let e = bank(max(length(w - c.xy) - cr, 0.0), CLEARING_BANK);
         h = clamp(h, c.z - e, c.z + e);
     }
 
