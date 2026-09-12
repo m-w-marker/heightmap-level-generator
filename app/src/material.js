@@ -1,8 +1,8 @@
 // Auto-Material des 3D-Terrains (→ Plan/Texturierung.md): three NodeMaterial (TSL), weil es unter WebGPU kein
 // onBeforeCompile gibt. Terrain-Mesh ohne Transformation → lokal = Welt
 import { MeshStandardNodeMaterial, DataArrayTexture, Vector3, RepeatWrapping, LinearFilter, LinearMipmapLinearFilter, SRGBColorSpace, NoColorSpace } from 'three/webgpu';
-import { texture, uv, uniform, positionWorld, cameraPosition, normalLocal, transformNormalToView, mx_noise_float, float, vec2, vec3, clamp, max, pow, tan, smoothstep, mix, luminance, select, vertexColor } from 'three/tsl';
-import { SHORE_RANGE } from './masks.js';
+import { texture, uv, uniform, positionWorld, cameraPosition, normalLocal, transformNormalToView, mx_noise_float, float, vec2, vec3, clamp, max, pow, tan, smoothstep, mix, luminance, select, vertexColor, atan, fwidth } from 'three/tsl';
+import { SHORE_RANGE, DASH_PERIOD } from './masks.js';
 import { ROLES } from './biomes.js';
 
 // Ebene im Texture-Array = Rolle = Ordner in public/textures/<biom> (austauschbar: albedo.jpg sRGB + normal.jpg OpenGL,
@@ -11,6 +11,9 @@ const L = Object.fromEntries(ROLES.map((l, i) => [l, i]));
 const SHORE_WET = 0.3; // m über dem Ufer-Spiegel: Übergang Sandfarbe (unter Wasser) → Farbkarte
 const BLEND_LUMA = 0.3, BLEND_SHARP = 4;
 const ICE_ROUGH = 0.35; // glatter → die Risse der Detail-Normalen glitzern im Sonnenlicht
+// Fahrbahn-Markierungen (Biome mit markings, → Plan/Biome.md): Mittellinie gestrichelt gelb, Randlinien weiß, in m
+const LINE_W = 0.15, EDGE_IN = 0.3, DASH_LEN = 3, PAINT = 0.85; // PAINT < 1: abgefahrene Farbe, Belag scheint durch
+const YELLOW = [0.78, 0.5, 0.06], WHITE = [0.75, 0.75, 0.72]; // linear
 const TRI_SHARP = 4; // Triplanar: Achsen-Gewicht |N|^4 → schmale Übergangszone zwischen den Projektionen
 const AT_SCALE = 0.29, AT_WAVE = 0.04; // Anti-Tiling: zweites Sample 3,4× größer; Mischmuster ~25 m
 const AT_COS = Math.cos(0.61), AT_SIN = Math.sin(0.61); // gedreht, damit die Kachelkanten nicht parallel liegen // Höhen-Blend: helle Texel (Steine) setzen sich im Übergang durch statt weich zu mischen
@@ -47,18 +50,19 @@ async function loadArray(biome, kind, size, srgb, anisotropy) {
     return { t, mean };
 }
 
-// colorTex = Farbtextur der Vorschau (RES², fern), maskTex = materialMask (RES²); beide per set*() tauschbar.
-// ready: false, bis die Texturen geladen sind → so lange zeigt main das Farbmaterial
-export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
+// colorTex = Farbtextur der Vorschau (RES², fern), maskTex = materialMask (RES²), roadUVTex = Straßen-Koordinaten (RES²,
+// masks.js); alle per set*() tauschbar. ready: false, bis die Texturen geladen sind → so lange zeigt main das Farbmaterial
+export function createTerrainMaterial(colorTex, maskTex, roadUVTex, anisotropy) {
     const u = {
         sand: uniform(1.5), green: uniform(45), rockH: uniform(85), scree: uniform(115), snow: uniform(140), // m über waterLevel
         rockLo: uniform(0.7), rockHi: uniform(1.2), // Neigung m/m
         waterLevel: uniform(15), gravelCurv: uniform(0), curvScale: uniform(1), texScale: uniform(4), texFade: uniform(150),
         texTint: uniform(1), // 1 = Mittelfarbe der Textur → Farbkarte (nah = fern, Rampe/Straßenfarbe gelten), 0 = Texturfarbe
         sandColor: uniform(new Vector3(0.5, 0.45, 0.2)), // linear, Sand der Farbrampe (unter Wasser)
+        marks: uniform(0), halfWidth: uniform(2), // Markierungen an (1) / aus; halbe Fahrbahnbreite m zum Dekodieren
     };
     const mean = ROLES.map(() => uniform(new Vector3(1, 1, 1)));
-    const color = texture(colorTex, uv()), mask = texture(maskTex, uv());
+    const color = texture(colorTex, uv()), mask = texture(maskTex, uv()), road = texture(roadUVTex, uv());
     const mat = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
     mat.colorNode = color;
     // Eis statt Wasser (Biome mit ice): Wasser-Mesh mit uv wie das Terrain, Alpha der Ecken = Tiefe → Ufer läuft aus wie beim
@@ -66,6 +70,22 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
     const ice = new MeshStandardNodeMaterial({ roughness: ICE_ROUGH, metalness: 0, transparent: true });
     let albedo = null, normals = null;
     const self = { mat, ice, ready: false, size: 0 };
+
+    // Linien prozedural aus roadUV: Querabstand linear gefiltert → scharfe Kante bei jeder Nähe. Pixel-Fußabdruck fw in m:
+    // schmaler als ein Pixel → Linie fw breit, Deckung LINE_W / fw (vorgefiltert, fern kein Moiré)
+    function markings(base) {
+        const lat = road.r.mul(2).sub(1).mul(u.halfWidth);
+        const along = atan(road.b.mul(2).sub(1), road.g.mul(2).sub(1)).mul(DASH_PERIOD / (2 * Math.PI)); // 0 = Strichmitte
+        const fw = max(fwidth(positionWorld.xz).length(), 1e-4);
+        const band = (d, w) => {
+            const ww = max(fw, w);
+            return float(1).sub(smoothstep(ww.sub(fw).mul(0.5), ww.add(fw).mul(0.5), d)).mul(float(w).div(ww));
+        };
+        const on = smoothstep(0.45, 0.55, road.a).mul(u.marks).mul(PAINT); // Linien enden, statt an Gabelungen halb zu verblassen
+        const center = band(lat.abs(), LINE_W).mul(band(along.abs(), DASH_LEN));
+        const edge = band(lat.abs().sub(u.halfWidth.sub(EDGE_IN + LINE_W / 2)).abs(), LINE_W);
+        return mix(mix(base, vec3(...WHITE), edge.mul(on)), vec3(...YELLOW), center.mul(on));
+    }
 
     function build() {
         const ramp = (h, a, b) => clamp(h.sub(a).div(max(b.sub(a), 0.01)), 0, 1); // linear wie die Farbrampe
@@ -115,7 +135,7 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
         const target = mix(u.sandColor, color.rgb, smoothstep(0, SHORE_WET / SHORE_RANGE, mask.a));
         const tinted = near.mul(mix(vec3(1), target.div(avg), u.texTint));
         const fade = smoothstep(u.texFade.mul(0.5), u.texFade, positionWorld.distance(cameraPosition));
-        mat.colorNode = mix(tinted, color.rgb, fade);
+        mat.colorNode = mix(markings(tinted), color.rgb, fade);
         const detail = b.reduce((a, v, i) => a.add(nrm[i].mul(v)), vec3(0)).normalize();
         mat.normalNode = transformNormalToView(mix(detail, N, fade).normalize()); // Mesh ohne Transformation: lokal = Welt
         mat.needsUpdate = true;
@@ -152,6 +172,7 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
     }
     self.setColorTex = t => { color.value = t; };
     self.setMask = (t, curvScale) => { mask.value = t; u.curvScale.value = curvScale; };
+    self.setRoadUV = (t, halfWidth) => { road.value = t; u.halfWidth.value = halfWidth; };
     // v: Rampen-Höhen (m über waterLevel), Fels-Neigung m/m, Wasserspiegel, Kies-Krümmung m, Kachel m, Überblendung m
     self.update = v => {
         for (const k of Object.keys(v)) if (u[k].value.isVector3) u[k].value.set(...v[k]); else u[k].value = v[k];

@@ -364,7 +364,12 @@ fn roadCoords(w: vec2<f32>, nRoads: u32, rD: ptr<function, array<f32, MAX_ROADS>
     for (var r = 0u; r < nRoads; r = r + 1u) {
         if (r != c && abs(dot((*rDir)[r], (*rDir)[c])) < PARALLEL_COS) { dCross = min(dCross, (*rD)[r]); }
     }
-    var allow = smoothstep(hw + MARK_GAP, hw + MARK_GAP + MARK_FADE, dCross);
+    // nur auf der Fahrbahn: am Rand der Reichweite mischt die lineare Filterung mit „keine Straße“ (Querabstand −1) →
+    // der Übergang kreuzte sonst Mittel- und Randlinie
+    var allow = smoothstep(hw + MARK_GAP, hw + MARK_GAP + MARK_FADE, dCross) * (1.0 - smoothstep(hw, hw + 0.5, (*rD)[c]));
+    // Straßenenden (Ort, Ausfahrt): hinter dem letzten Punkt ist der Abstand radial → Randlinie würde zum Kreisbogen
+    let len = u.roads[c * ROAD_POINTS + ROAD_POINTS - 1u].w;
+    allow *= smoothstep(MARK_GAP, MARK_GAP + MARK_FADE, min((*rS)[c], len - (*rS)[c]));
     let tr = u.params.clearingRadius * (1.0 + CLEARING_WOBBLE) + MARK_GAP;
     for (var t = 0u; t < min(u32(u.params.clearingCount), MAX_TOWNS); t = t + 1u) {
         allow *= smoothstep(tr, tr + MARK_FADE, length(w - u.towns[t].xy));

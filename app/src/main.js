@@ -400,7 +400,7 @@ function applyMaterial() {
     ROCK_SLOPE[0] = Math.tan(p.rockSlope * Math.PI / 180);
     ROCK_SLOPE[1] = Math.tan(Math.min(p.rockSlope + p.rockBlend, 89) * Math.PI / 180);
     autoMat.update({ sand: h[1], green: h[2], rockH: h[3], scree: h[4], snow: h[5], rockLo: ROCK_SLOPE[0], rockHi: ROCK_SLOPE[1],
-        waterLevel: p.waterLevel, gravelCurv: p.gravelCurv, texScale: p.texScale, texFade: p.texFade, texTint: p.texTint,
+        waterLevel: p.waterLevel, gravelCurv: p.gravelCurv, texScale: p.texScale, texFade: p.texFade, texTint: p.texTint, marks: bio.markings ? 1 : 0,
         sandColor: new THREE.Color().setRGB(...STOPS[0][1].map(v => v / 255), THREE.SRGBColorSpace).toArray() });
 }
 const RELIEF_TINT = 0.06;      // Helligkeit pro m Kuppe/Mulde (±15 % max)
@@ -509,24 +509,29 @@ const terrainMat = new THREE.MeshStandardMaterial({ map: terrainTex, roughness: 
 // Material-Maske RES² für das Auto-Material (→ Plan/Texturierung.md): Daten, kein sRGB, ohne Mips; Texel wie terrainTex.
 // Start: 1×1, bis die erste Regeneration sie füllt
 const maskData = (data, n) => Object.assign(new THREE.DataTexture(data, n, n), { magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter, needsUpdate: true });
-let maskTex = maskData(new Uint8Array(4), 1);
+let maskTex = maskData(new Uint8Array(4), 1), roadUVTex = maskData(new Uint8Array(4), 1);
+// Daten-Textur mit RES² neu füllen, bei anderer Map-Größe neu anlegen
+function refill(tex, data) {
+    if (tex.image.width !== RES) {
+        tex.dispose();
+        return maskData(data, RES);
+    }
+    tex.image.data = data;
+    tex.needsUpdate = true;
+    return tex;
+}
 function updateMaskTex() {
     const cell = params.mapSize / RES, c = curvature(heights, RES, cell, params.maxH), scale = curvatureScale(c);
-    const data = materialMask(slope, c, scale, roadMask, shoreL);
-    if (maskTex.image.width !== RES) {
-        maskTex.dispose();
-        maskTex = maskData(data, RES);
-    } else {
-        maskTex.image.data = data;
-        maskTex.needsUpdate = true;
-    }
+    maskTex = refill(maskTex, materialMask(slope, c, scale, roadMask, shoreL));
     autoMat.setMask(maskTex, scale);
+    roadUVTex = refill(roadUVTex, roadUV);
+    autoMat.setRoadUV(roadUVTex, params.roadWidth / 2);
 }
 
 // Ansicht, nicht in Save/Link (hängt am Gerät): Textures aus = Farbmaterial (schwache GPUs, Vergleich); Kantenlänge der
 // Schicht-Texturen 2048 / 1024 (¼ Speicher)
 const view = { textures: true, texSize: 2048 };
-const autoMat = createTerrainMaterial(terrainTex, maskTex, renderer.getMaxAnisotropy());
+const autoMat = createTerrainMaterial(terrainTex, maskTex, roadUVTex, renderer.getMaxAnisotropy());
 const terrainMaterial = () => view.textures && autoMat.ready ? autoMat.mat : terrainMat;
 // Eis ohne Texturen: Farbkarte über die uv des Wasser-Meshes (= Terrain-Gitter), Alpha der Ecken wie beim Wasser
 const iceMat = new THREE.MeshStandardMaterial({ map: terrainTex, roughness: autoMat.ice.roughness, metalness: 0, transparent: true, vertexColors: true });
