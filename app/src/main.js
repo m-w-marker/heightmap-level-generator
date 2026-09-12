@@ -132,14 +132,8 @@ if (!device) throw new Error('No WebGPU device (WebGL fallback active?)');
 const queue = device.queue;
 device.addEventListener('uncapturederror', e => console.error('WebGPU:', e.error.message));
 
-const heightBuf = device.createBuffer({
-    size: GMAX.res * GMAX.res * 4,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-});
 const uniformsBuf = device.createBuffer({ size: uniformsData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-const roadMaskBuf = device.createBuffer({ size: GMAX.res * GMAX.res * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
-// Wasserspiegel (m) je Pixel + See-Spiegelfeld pre² aus hydrology() (→ Plan/Fluesse.md)
-const waterBuf = device.createBuffer({ size: GMAX.res * GMAX.res * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+// See-Spiegelfeld pre² aus hydrology() (→ Plan/Fluesse.md)
 const lakesBuf = device.createBuffer({ size: GMAX.pre * GMAX.pre * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
 const erosion = createErosion(device);
 
@@ -151,26 +145,29 @@ const pipeline = device.createComputePipeline({
     compute: { module: shaderModule, entryPoint: 'main' },
 });
 
-const bind = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-        { binding: 0, resource: { buffer: uniformsBuf } },
-        { binding: 1, resource: { buffer: heightBuf } },
-        { binding: 2, resource: { buffer: roadMaskBuf } },
-        { binding: 3, resource: { buffer: erosion.delta } },
-        { binding: 4, resource: { buffer: waterBuf } },
-        { binding: 5, resource: { buffer: lakesBuf } },
-    ],
-});
 // Roh-Terrain für die Erosion (Entry raw, eigenes auto-Layout: nur Uniform + heights)
 const rawPipeline = device.createComputePipeline({ layout: 'auto', compute: { module: shaderModule, entryPoint: 'raw' } });
-const rawBind = device.createBindGroup({
-    layout: rawPipeline.getBindGroupLayout(0),
-    entries: [
-        { binding: 0, resource: { buffer: uniformsBuf } },
-        { binding: 1, resource: { buffer: heightBuf } },
-    ],
-});
+
+// Ausgänge res² (heights, roadMask, Wasserspiegel m je Pixel) für die größte Map; ein Export mit Detail ×2 lässt sie einmalig
+// wachsen (→ Plan/ExportZiele.md). Nur innerhalb von serial() aufrufen → kein Pass läuft auf einem zerstörten Puffer
+let heightBuf, roadMaskBuf, waterBuf, bind, rawBind, bufRes = 0;
+function ensureBuffers(res) {
+    if (res <= bufRes) return;
+    if (res * res * 4 > device.limits.maxStorageBufferBindingSize) throw new Error(`${res}² px exceeds the GPU storage buffer limit`);
+    for (const b of [heightBuf, roadMaskBuf, waterBuf]) b?.destroy();
+    [heightBuf, roadMaskBuf, waterBuf] = [0, 1, 2].map(() =>
+        device.createBuffer({ size: res * res * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC }));
+    bind = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [uniformsBuf, heightBuf, roadMaskBuf, erosion.delta, waterBuf, lakesBuf].map((buffer, binding) => ({ binding, resource: { buffer } })),
+    });
+    rawBind = device.createBindGroup({
+        layout: rawPipeline.getBindGroupLayout(0),
+        entries: [uniformsBuf, heightBuf].map((buffer, binding) => ({ binding, resource: { buffer } })),
+    });
+    bufRes = res;
+}
+ensureBuffers(GMAX.res);
 
 let heights = new Float32Array(RES * RES);
 let roadMask = new Float32Array(RES * RES);
@@ -218,6 +215,7 @@ function runErosion(p, erode) {
 // Je Pass laufen writeBuffer, Dispatch und Kopie ohne await dazwischen (→ .clinerules/wgsl.md)
 async function computeMapNow(p, res) {
     const t0 = performance.now();
+    ensureBuffers(res);
     const erosionOn = p.erosionStrength > 0; // aus → heutiger Pfad bitgleich
     const PRE = grids(p.mapSize).pre; // Zellen bleiben 3,1 m (→ Plan/Aufloesung.md)
     if (erosionOn) runErosion(p, true);
@@ -251,6 +249,7 @@ async function generate() {
     const map = await computeMap({ ...params }, g.res);
     if (params.mapSize !== size) return; // Mesh passte nicht mehr zur Map-Größe; die dabei geplante Regeneration zeigt die neue
     ({ terrain: terrain128, heights, roadMask, water } = map);
+    hiSrc = null;
     if (g.res !== RES) {
         resizeView(g);
         refreshSizes();
@@ -703,11 +702,19 @@ async function drawThumb(seed, canvas) {
 
 // Export (→ Plan/ExportZiele.md): Ziel-Engine bestimmt Größen, Normal-Konvention und Zeilenrichtung. Quelle = N² Readback;
 // Größe n == N → Pixelzentren 1:1, sonst Vertex-Gitter auf den Map-Ecken (resample). Nicht in Save/Link
-const exp = { target: 'unreal', size: 0 };
-const exportSource = () => ({ N: RES, heights, roadMask, water, slope });
+const exp = { target: 'unreal', size: 0, detail: 1 };
+// Detail ×2: Final-Pass in 2·RES neu (dieselbe Pipeline, schärfere Straßen-/Uferkanten), gecacht bis zur nächsten Regeneration
+let hiSrc = null;
+async function exportSource() {
+    if (exp.detail === 1) return { N: RES, heights, roadMask, water, slope };
+    const N = 2 * RES, p = { ...params };
+    hiSrc ??= computeMap(p, N).then(m => ({ N, heights: m.heights, roadMask: m.roadMask, water: m.water,
+        slope: slopeRelief(m.heights, N, p.maxH, p.mapSize).slope }), e => { hiSrc = null; throw e; });
+    return hiSrc;
+}
 const cellSize = (n, N) => params.mapSize / (n === N ? n : n - 1); // m zwischen zwei Samples
-function exportN(src) {
-    const list = exportSizes(exp.target, src.N);
+function exportN(N) {
+    const list = exportSizes(exp.target, N);
     return list.includes(exp.size) ? exp.size : list[0];
 }
 // Feld der Quelle auf das Export-Gitter, Zeilen je Ziel
@@ -716,8 +723,8 @@ function onGrid(buf, res, n, centres = n === res) {
     return TARGETS[exp.target].flip ? flipRows(r, n) : r;
 }
 function refreshSizes() {
-    const src = exportSource(), list = exportSizes(exp.target, src.N);
-    panel.sizes(list.map(n => [n, `${n} px · ${+cellSize(n, src.N).toFixed(3)} m`]), exportN(src));
+    const N = RES * exp.detail;
+    panel.sizes(exportSizes(exp.target, N).map(n => [n, `${n} px · ${+cellSize(n, N).toFixed(3)} m`]), exportN(N));
 }
 
 const panel = buildPanel(params, {
@@ -741,6 +748,7 @@ const panel = buildPanel(params, {
     }),
     exportTargets: Object.fromEntries(Object.entries(TARGETS).map(([k, t]) => [k, t.label])),
     exportTarget: t => { exp.target = t; refreshSizes(); },
+    exportDetail: d => { exp.detail = d; refreshSizes(); },
     exportSize: n => { exp.size = n; },
     exports: {
         'Heightmap PNG (16-bit)': exportPng16,
@@ -822,12 +830,12 @@ function exportPng() {
 }
 
 async function exportPng16() {
-    const src = await exportSource(), n = exportN(src);
+    const src = await exportSource(), n = exportN(src.N);
     download(await encodePng(n, n, quantize16(onGrid(src.heights, src.N, n)), 1, 16), `heightmap-${params.seed}-${n}-16bit.png`);
 }
 
 async function exportR16() {
-    const src = await exportSource(), n = exportN(src);
+    const src = await exportSource(), n = exportN(src.N);
     download(new Blob([encodeR16(quantize16(onGrid(src.heights, src.N, n)))], { type: 'application/octet-stream' }), `heightmap-${params.seed}-${n}.r16`);
 }
 
@@ -835,7 +843,7 @@ async function exportR16() {
 // Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md). Eingaben resamplen, nicht RGBA → Summe bleibt 255.
 // Wasser = Meer, Seen, Flüsse: Spiegel je Pixel resamplen, nicht die 0-codierten Rohwerte (0 = Meer) (→ Plan/Fluesse.md)
 async function exportSplatmap() {
-    const src = await exportSource(), n = exportN(src), N = src.N;
+    const src = await exportSource(), n = exportN(src.N), N = src.N;
     const hs = onGrid(src.heights, N, n), ms = onGrid(src.roadMask, N, n), ss = onGrid(src.slope, N, n);
     const ws = src.water.some(w => w > 0) ? onGrid(Float32Array.from(src.water, w => spiegel(w, params.waterLevel)), N, n) : null;
     const px = new Uint8Array(n * n * 4), shore = STOPS[1][0];
@@ -861,7 +869,7 @@ function curvatureExport(src, n) {
     return { c, scale: curvatureScale(c) };
 }
 async function exportMask(kind) {
-    const src = await exportSource(), n = exportN(src);
+    const src = await exportSource(), n = exportN(src.N);
     let px;
     if (kind === 'curvature') {
         const { c, scale } = curvatureExport(src, n);
@@ -886,7 +894,7 @@ async function flowExport(src, n) {
     return { f: r, scale: flowScale(r) };
 }
 async function exportFlow() {
-    const src = await exportSource(), n = exportN(src), { f, scale } = await flowExport(src, n);
+    const src = await exportSource(), n = exportN(src.N), { f, scale } = await flowExport(src, n);
     download(await encodePng(n, n, flowBytes(f, scale), 1, 8), `flow-${params.seed}-${n}.png`);
 }
 
@@ -899,10 +907,11 @@ async function exportGlb() {
 
 // Maßstab + Konvention für die Engine, dazu alle Einstellungen (Save-Format) → reproduzierbar
 async function exportMeta() {
-    const src = await exportSource(), n = exportN(src), grid = n === src.N, t = TARGETS[exp.target], cell = cellSize(n, src.N);
+    const src = await exportSource(), n = exportN(src.N), grid = n === src.N, t = TARGETS[exp.target], cell = cellSize(n, src.N);
     const meta = {
         version: SAVE_VERSION,
         target: t.label,
+        detail: exp.detail, // 2 = Map für den Export in doppelter Auflösung gerechnet
         import: engineImport(exp.target, { mapSize: params.mapSize, n, cell, maxH: params.maxH }), // Werte für den Import-Dialog
         mapSize: params.mapSize,
         resolution: n,

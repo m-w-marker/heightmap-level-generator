@@ -140,7 +140,7 @@ export function seedGrid(size, count, current, draw, pick) {
 }
 
 // cb: change(), color(), presets: [Namen], preset(name), save(), load(), link(), walk(), compare(), exports: {Label: fn},
-//     exportTargets: {key: Label}, exportTarget(key), exportSize(px), regenerate()
+//     exportTargets: {key: Label}, exportTarget(key), exportDetail(1|2), exportSize(px), regenerate()
 // → { guis: {Tab: GUI}, refresh(), status(text), sizes(options, selected), busy(on) }
 export function buildPanel(params, cb) {
     const seed = el('input', { id: 'seed', type: 'number', min: 1, max: 99999, step: 1, value: params.seed, title: 'Seed (seed)' });
@@ -176,6 +176,9 @@ export function buildPanel(params, cb) {
     const target = el('select', { id: 'exportTarget', title: 'Target engine: sets the export sizes, the normal map convention, the row order and the import values in the metadata' },
         ...Object.entries(cb.exportTargets).map(([k, t]) => el('option', { value: k, textContent: t })));
     target.addEventListener('change', () => cb.exportTarget(target.value));
+    const detail = el('select', { id: 'exportDetail', title: 'Detail ×2: the map is computed again at double resolution for the export (0.25 m per pixel): sharper road, bank, cliff and river edges; hills gain no new detail' },
+        el('option', { value: 1, textContent: '×1' }), el('option', { value: 2, textContent: '×2' }));
+    detail.addEventListener('change', () => cb.exportDetail(+detail.value));
     const size = el('select', { id: 'exportRes', title: 'Export size in pixels and spacing (heightmap, RAW, splatmap, masks, metadata)' });
     size.addEventListener('change', () => cb.exportSize(+size.value));
     const status = el('div',{ id: 'status', className: 'row', title: 'Last generation: GPU passes incl. readback, road network, total' });
@@ -183,7 +186,7 @@ export function buildPanel(params, cb) {
         el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice, compare, regen, walk),
         el('div', { className: 'row' }, menu('preset', 'Preset…', cb.presets, cb.preset),
             button('Save', 'Save all settings as JSON', cb.save), button('Load', 'Load settings from JSON', cb.load), link),
-        el('div', { className: 'row' }, menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]())),
+        el('div', { className: 'row' }, menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]()), detail),
         el('div', { className: 'row' }, el('label', { textContent: 'For', htmlFor: 'exportTarget' }), target, size),
         status);
 
