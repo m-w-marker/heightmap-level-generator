@@ -4,12 +4,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildPanel, seedGrid } from './ui.js';
 import { encodePng } from './png.js';
-import { quantize16, encodeR16, sampleBilinear, resample, TARGETS, exportSizes, engineImport, flipRows } from './export.js';
+import { quantize16, encodeR16, sampleBilinear, resample, TARGETS, exportSizes, engineImport, flipRows, exportGrid, layout } from './export.js';
 import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, TOWN_FADE } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, UNIFORM_FLOATS, grids, autoMaxH } from './uniforms.js';
-import { hydrology } from './hydro.js';
+import { hydrology, RIVER_WET } from './hydro.js';
 import { createErosion } from './erosion.js';
 import { createWalk } from './walk.js';
 
@@ -174,6 +174,7 @@ let heights = new Float32Array(RES * RES);
 let roadMask = new Float32Array(RES * RES);
 let water = new Float32Array(RES * RES); // Spiegel von See/Fluss m je Pixel, 0 = nur Meer (→ spiegel())
 let townMask = new Float32Array(RES * RES); // Lichtungen 0–1, nur für den Export
+let lastNet = null, lastHydro = null; // Straßennetz + Hydrologie des letzten Laufs → Layout JSON
 
 
 // Readback: Staging MAP_READ + copyBufferToBuffer + mapAsync (→ .clinerules/wgsl.md)
@@ -250,7 +251,7 @@ async function generate() {
     // Kopie: Regler/Preset während der awaits → sonst Straßen des neuen Stands auf dem Terrain des alten
     const map = await computeMap({ ...params }, g.res);
     if (params.mapSize !== size) return; // Mesh passte nicht mehr zur Map-Größe; die dabei geplante Regeneration zeigt die neue
-    ({ terrain: terrain128, heights, roadMask, water, townMask } = map);
+    ({ terrain: terrain128, heights, roadMask, water, townMask, net: lastNet, hydro: lastHydro } = map);
     hiSrc = null;
     if (g.res !== RES) {
         resizeView(g);
@@ -762,6 +763,7 @@ const panel = buildPanel(params, {
         'Road mask PNG': () => exportArea('road'),
         'Town mask PNG': () => exportArea('town'),
         'Water mask PNG': () => exportArea('water'),
+        'Layout JSON': exportLayout,
         'Metadata JSON': exportMeta,
         '3D mesh glTF (.glb)': exportGlb,
         'Heightmap PNG (8-bit preview)': exportPng,
@@ -960,6 +962,50 @@ async function exportMeta() {
         settings: pickParams(params),
     };
     download(new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }), `heightmap-${params.seed}-${n}-meta.json`);
+}
+
+// Layout JSON: Geometrie des letzten Laufs in einer neutralen Konvention statt je Engine, Höhen aus der Export-Quelle
+// (×2 beachtet); Engine-Umrechnung nur als Hinweis (→ Plan/StadtStrassenMasken.md)
+async function exportLayout() {
+    const src = await exportSource(), n = exportN(src.N), t = TARGETS[exp.target], M = params.mapSize;
+    const lakeCell = M / grids(M).pre;
+    const out = {
+        format: 'terrain-layout',
+        version: SAVE_VERSION,
+        seed: params.seed,
+        mapSize: M,
+        maxH: params.maxH,
+        coordinates: {
+            units: 'metres',
+            axes: 'right-handed, y up (same as the .glb mesh): x = image column (left to right), z = image row (top to bottom of an unflipped image), y = height',
+            origin: 'map centre at height 0; x and z run from -mapSize/2 to +mapSize/2',
+            imageToWorld: 'sample (i, j) of the exported images (column i, file row j): x = x0 + i * dx, z = z0 + j * dz (values in "export"); inverse i = (x - x0) / dx, j = (z - z0) / dz',
+            pixelCentres: 'native size n: x = (i + 0.5) * mapSize / n - mapSize / 2 (same for z and j)',
+            vertices: 'other sizes n: x = i * mapSize / (n - 1) - mapSize / 2, first and last sample on the map edges',
+            rows: t.flip ? 'this export has its rows flipped (bottom-up): file row 0 lies at z = +mapSize/2' : 'file row 0 lies at z = -mapSize/2',
+            engines: {
+                unreal: 'cm, Z up: X = L.x + (x + mapSize/2) * 100, Y = L.y + (z + mapSize/2) * 100, Z = y * 100; L = landscape location (its first vertex), location Z as in the metadata import values',
+                unity: 'X = P.x + x + mapSize/2, Y = P.y + y, Z = P.z + mapSize/2 - z; P = terrain position (its corner); Unity exports have their rows flipped, so the terrain is not mirrored',
+                godot: 'same axes and metres; add the world position of the map centre',
+                web: 'same as the .glb mesh (three.js / glTF)',
+            },
+        },
+        export: { target: t.label, detail: exp.detail, ...exportGrid(M, n, src.N, t.flip) },
+        fields: {
+            towns: 'position [x, y, z] (y = terrain height at the centre), level = height the clearing is levelled to, radius = nominal clearing radius in m (outline varies ±50 %, exact shape in the Town mask; 0 = no clearing), roads = ids of the roads ending here',
+            exits: 'where a road leaves the map at the foot of the rim: position [x, y, z], road id',
+            roads: 'from / to = town or exit id, width in m, points [x, y, z] along the centre line (y = road surface from the heightmap), level = planned height per point after grade limiting (the surface follows the terrain within ±roadTolerance of it)',
+            rivers: `points [x, y, z, width] from source to mouth (last point), y = water surface, width = bed width in m (water reaches up to ${RIVER_WET} m further on each side)`,
+            lakes: `level = water surface, centre [x, y, z], area in m² and bbox [xMin, zMin, xMax, zMax] from the lake grid (${lakeCell} m cells); exact shoreline in the Water mask`,
+            sea: 'everything below level is sea',
+        },
+        ...layout({ net: lastNet, hydro: lastHydro, heights: src.heights, N: src.N, mapSize: M, maxH: params.maxH,
+            waterLevel: params.waterLevel, roadWidth: params.roadWidth, clearingRadius: params.clearingRadius }),
+        settings: pickParams(params),
+    };
+    // Zahlen-Arrays (Punkte, bbox) in eine Zeile, sonst eine Zahl je Zeile
+    const json = JSON.stringify(out, null, 1).replace(/\[\s*(-?[\d.e+-]+(?:,\s*-?[\d.e+-]+)*)\s*\]/g, (_, a) => `[${a.replace(/\s+/g, '')}]`);
+    download(new Blob([json], { type: 'application/json' }), `layout-${params.seed}.json`);
 }
 
 if (!applyHash()) runGenerate();

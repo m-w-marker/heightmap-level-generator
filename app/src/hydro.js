@@ -5,6 +5,7 @@ import { chaikin, resample, minHeap } from './roadgen.js';
 export const MAX_RIVERS = 16;   // = MAX_RIVERS in heightmap.wgsl (Layout-Test prüft)
 export const RIVER_POINTS = 32; // = RIVER_POINTS in heightmap.wgsl
 export const RIVER_WET = 1;     // m: Wasser reicht über das Bett hinaus (= RIVER_WET in heightmap.wgsl)
+export const RIVER_SINK = 0.4;  // m: Shader legt den Fluss-Spiegel so tief unter rivers[].z (= RIVER_SINK in heightmap.wgsl)
 const RIVER_MIN_W = 1.5;        // m Breite an der Quelle
 const LAKE_MIN_DEPTH = 0.3;     // m: flachere Senken bleiben trocken
 const MIN_RIVER_CELLS = 8;      // kürzere Zuflüsse weglassen (~25 m; 4 ließ gerade Stummel stehen)

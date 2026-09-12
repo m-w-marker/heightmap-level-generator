@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, RIVERS_OFFSET, UNIFORM_FLOATS, EROSION_FIELDS, EROSION_FLOATS, grids, RES_MIN, RES_MAX, encodeUniforms, encodeErosion } from '../src/uniforms.js';
 import { MAX_ROADS, ROAD_POINTS, MAX_TOWNS } from '../src/roadgen.js';
-import { MAX_RIVERS, RIVER_POINTS, RIVER_WET } from '../src/hydro.js';
+import { MAX_RIVERS, RIVER_POINTS, RIVER_WET, RIVER_SINK } from '../src/hydro.js';
 import { TOWN_FADE } from '../src/masks.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,7 +48,7 @@ for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS
     const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)u;`));
     check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
 }
-for (const [name, val] of [['RIVER_WET', RIVER_WET], ['TOWN_FADE', TOWN_FADE]]) {
+for (const [name, val] of [['RIVER_WET', RIVER_WET], ['RIVER_SINK', RIVER_SINK], ['TOWN_FADE', TOWN_FADE]]) {
     const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*([\\d.]+);`));
     check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
 }

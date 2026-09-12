@@ -48,7 +48,7 @@ const RIVER_BANK = 0.577; // tan 30°: Ufer über dem Spiegel, danach steiler wi
 const LAKE_EDGE = 0.25;   // bilineare Seemaske: Wasser bis ~¾ Zelle über die Seezellen hinaus
 // m: Fluss-Spiegel unter dem 128²-Spiegel aus hydro.js → das 1024²-Gelände neben dem Bett (Noise ±0,3 m) bleibt trocken,
 // Wasser endet an der glatten Bettkante; sonst endete es am nassen Streifen über tieferer Aue → Zacken im Wasser-Mesh
-const RIVER_SINK = 0.4;
+const RIVER_SINK = 0.4; // = RIVER_SINK in hydro.js (Layout JSON)
 
 const SLOPE_VAR_WAVE = 40.0; // m
 const SLOPE_MIN = 0.1745;    // 10° in rad
