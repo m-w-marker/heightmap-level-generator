@@ -2,8 +2,9 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, UNIFORM_FLOATS, EROSION_RES, EROSION_FIELDS, EROSION_FLOATS, encodeUniforms, encodeErosion } from '../src/uniforms.js';
+import { PARAM_FIELDS, ROADS_OFFSET, TOWNS_OFFSET, RIVERS_OFFSET, UNIFORM_FLOATS, EROSION_RES, EROSION_FIELDS, EROSION_FLOATS, PRE, encodeUniforms, encodeErosion } from '../src/uniforms.js';
 import { MAX_ROADS, ROAD_POINTS, MAX_TOWNS } from '../src/roadgen.js';
+import { MAX_RIVERS, RIVER_POINTS, RIVER_WET } from '../src/hydro.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const wgsl = readFileSync(join(root, 'src', 'heightmap.wgsl'), 'utf8');
@@ -27,22 +28,30 @@ check(JSON.stringify(wgslFields) === JSON.stringify(Object.keys(PARAM_FIELDS)),
 const roadsByte = Math.ceil(wgslFields.length * 4 / 16) * 16;
 check(ROADS_OFFSET * 4 === roadsByte, `ROADS_OFFSET*4 == ${roadsByte} (ist ${ROADS_OFFSET * 4})`);
 
-// Array-Größen + Reihenfolge in struct Uniforms: params, roads, towns (towns hinter roads, beide vec4 → kein Padding)
+// Array-Größen + Reihenfolge in struct Uniforms: params, roads, towns, rivers (alle vec4 → kein Padding dazwischen)
 const uniM = wgsl.match(/struct Uniforms \{([\s\S]*?)\}/);
-const members = uniM ? uniM[1].split('\n').map(l => l.trim()).filter(Boolean).map(l => l.split(':')[0].trim()) : [];
-check(JSON.stringify(members) === JSON.stringify(['params', 'roads', 'towns']), `struct Uniforms = params, roads, towns (ist ${members.join(', ')})`);
-for (const [name, n] of [['roads', MAX_ROADS * ROAD_POINTS], ['towns', MAX_TOWNS]]) {
+const members = uniM ? uniM[1].split('\n').map(l => l.replace(/\/\/.*/, '').trim()).filter(Boolean).map(l => l.split(':')[0].trim()) : [];
+check(JSON.stringify(members) === JSON.stringify(['params', 'roads', 'towns', 'rivers']), `struct Uniforms = params, roads, towns, rivers (ist ${members.join(', ')})`);
+for (const [name, n] of [['roads', MAX_ROADS * ROAD_POINTS], ['towns', MAX_TOWNS], ['rivers', MAX_RIVERS * RIVER_POINTS]]) {
     const m = wgsl.match(new RegExp(`${name}:\\s*array<vec4<f32>,\\s*(\\d+)>`));
     check(!!m && Number(m[1]) === n, `WGSL ${name}-Array ${m ? m[1] : '–'} == ${n}`);
 }
 check(TOWNS_OFFSET === ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS, `TOWNS_OFFSET ${TOWNS_OFFSET} == hinter roads`);
-check(UNIFORM_FLOATS === TOWNS_OFFSET + 4 * MAX_TOWNS, `UNIFORM_FLOATS ${UNIFORM_FLOATS} == Ende von towns`);
+check(RIVERS_OFFSET === TOWNS_OFFSET + 4 * MAX_TOWNS, `RIVERS_OFFSET ${RIVERS_OFFSET} == hinter towns`);
+check(UNIFORM_FLOATS === RIVERS_OFFSET + 4 * MAX_RIVERS * RIVER_POINTS, `UNIFORM_FLOATS ${UNIFORM_FLOATS} == Ende von rivers`);
+check(UNIFORM_FLOATS * 4 <= 65536, `Uniform ${UNIFORM_FLOATS * 4} B ≤ 64 KiB (maxUniformBufferBindingSize)`);
 
 // WGSL-Konstanten der Loops == JS
-for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS], ['MAX_TOWNS', MAX_TOWNS], ['EROSION_RES', EROSION_RES]]) {
+for (const [name, val] of [['MAX_ROADS', MAX_ROADS], ['ROAD_POINTS', ROAD_POINTS], ['MAX_TOWNS', MAX_TOWNS], ['EROSION_RES', EROSION_RES],
+    ['MAX_RIVERS', MAX_RIVERS], ['RIVER_POINTS', RIVER_POINTS], ['LAKE_RES', PRE]]) {
     const m = wgsl.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)u;`));
     check(!!m && Number(m[1]) === val, `WGSL const ${name} == ${val} (ist ${m ? m[1] : '–'})`);
 }
+{
+    const m = wgsl.match(/const RIVER_WET\s*=\s*([\d.]+);/);
+    check(!!m && Number(m[1]) === RIVER_WET, `WGSL const RIVER_WET == ${RIVER_WET} (ist ${m ? m[1] : '–'})`);
+}
+check(/lakes\[u32\(c\.y\) \* LAKE_RES/.test(wgsl) && /rL = mix\(a\.z, b\.z/.test(wgsl) && /rW = mix\(a\.w, b\.w/.test(wgsl), 'WGSL liest See-Feld mit LAKE_RES, Fluss-Spiegel aus .z, halbe Breite aus .w');
 
 // Erosion: struct E ↔ EROSION_FIELDS, Gitter-Konstante, Uniform-Größe auf 16 B (→ Plan/Erosion.md)
 {
@@ -69,7 +78,9 @@ check(/uniformsData\s*=\s*new Float32Array\(UNIFORM_FLOATS\)/.test(mainJs), 'mai
     const lv = new Float32Array(nP).map((_, i) => 1000 + i);
     // eine Stadt zu viel: encodeUniforms kappt auf MAX_TOWNS statt hinter das Ende zu schreiben
     const towns = Array.from({ length: MAX_TOWNS + 1 }, (_, k) => ({ x: 5000 + k, y: 6000 + k, level: 7000 + k }));
-    encodeUniforms({}, pts, lv, towns, out);
+    const rivers = new Float32Array(4 * MAX_RIVERS * RIVER_POINTS).map((_, i) => 9000 + i);
+    encodeUniforms({}, pts, lv, towns, rivers, out);
+    check(out.subarray(RIVERS_OFFSET).every((v, i) => v === 9000 + i), `encodeUniforms packt rivers 1:1 ab Float ${RIVERS_OFFSET}`);
     let ok = true;
     for (let k = 0; k < nP; k++) {
         const o = ROADS_OFFSET + 4 * k;

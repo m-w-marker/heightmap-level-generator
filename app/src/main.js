@@ -8,7 +8,7 @@ import { quantize16, encodeR16, sampleBilinear, resample } from './export.js';
 import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
-import { encodeUniforms, UNIFORM_FLOATS, EROSION_RES, autoMaxH } from './uniforms.js';
+import { encodeUniforms, UNIFORM_FLOATS, EROSION_RES, PRE, autoMaxH } from './uniforms.js'; // PRE: Prepass-Auflösung (Routing, Hydrologie)
 import { createErosion } from './erosion.js';
 import { createWalk } from './walk.js';
 
@@ -107,6 +107,9 @@ const heightBuf = device.createBuffer({
 });
 const uniformsBuf = device.createBuffer({ size: uniformsData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 const roadMaskBuf = device.createBuffer({ size: RES * RES * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+// Wasserspiegel (m) je Pixel + See-Spiegelfeld PRE² aus hydrology() (→ Plan/Fluesse.md)
+const waterBuf = device.createBuffer({ size: RES * RES * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+const lakesBuf = device.createBuffer({ size: PRE * PRE * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
 const erosion = createErosion(device);
 
 const shaderModule = device.createShaderModule({ code: WGSL });
@@ -124,6 +127,8 @@ const bind = device.createBindGroup({
         { binding: 1, resource: { buffer: heightBuf } },
         { binding: 2, resource: { buffer: roadMaskBuf } },
         { binding: 3, resource: { buffer: erosion.delta } },
+        { binding: 4, resource: { buffer: waterBuf } },
+        { binding: 5, resource: { buffer: lakesBuf } },
     ],
 });
 // Roh-Terrain für die Erosion (Entry raw, eigenes auto-Layout: nur Uniform + heights)
@@ -139,7 +144,6 @@ const rawBind = device.createBindGroup({
 let heights = new Float32Array(RES * RES);
 let roadMask = new Float32Array(RES * RES);
 
-const PRE = 128; // Prepass-Auflösung für das CPU-Routing (→ Plan/Roads.md)
 
 // Readback: Staging MAP_READ + copyBufferToBuffer + mapAsync (→ .clinerules/wgsl.md)
 async function readBuffer(buf, bytes) {
@@ -170,7 +174,7 @@ const NO_ROADS = new Float32Array(MAX_ROADS * ROAD_POINTS * 2), NO_LEVELS = new 
 
 // Roh-Terrain EROSION_RES² nach heightBuf → Erosion → erosion.delta / erosion.flow (→ Plan/Erosion.md)
 function runErosion(p, erode) {
-    encodeUniforms({ ...p, mapSize: MAP, res: EROSION_RES, roadCount: 0, clearingCount: 0 }, NO_ROADS, NO_LEVELS, [], uniformsData);
+    encodeUniforms({ ...p, mapSize: MAP, res: EROSION_RES, roadCount: 0, clearingCount: 0, riverCount: 0 }, NO_ROADS, NO_LEVELS, [], null, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(EROSION_RES, rawPipeline, rawBind);
     erosion.run(heightBuf, { ...p, mapSize: MAP }, erode);
@@ -184,7 +188,7 @@ async function computeMapNow(p, res) {
     if (erosionOn) runErosion(p, true);
     // Prepass: 128² Roh-Terrain (+ Erosion, ohne Straßen, mit Rand-Ring; die Randzone sperrt das Routing selbst)
     // → Routing-Daten für roadgen (→ Plan/PresetsAusfahrten.md)
-    encodeUniforms({ ...p, mapSize: MAP, res: PRE, roadCount: 0, clearingCount: 0, erosionOn }, NO_ROADS, NO_LEVELS, [], uniformsData);
+    encodeUniforms({ ...p, mapSize: MAP, res: PRE, roadCount: 0, clearingCount: 0, riverCount: 0, erosionOn }, NO_ROADS, NO_LEVELS, [], null, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(PRE);
     const terrain = (await readBuffer(heightBuf, PRE * PRE * 4)).map(h => h * p.maxH);
@@ -192,7 +196,7 @@ async function computeMapNow(p, res) {
 
     const net = generateRoads(p.seed, MAP, { size: PRE, data: terrain }, p);
     const tg = performance.now();
-    encodeUniforms({ ...p, mapSize: MAP, res, roadCount: net.count, clearingCount: net.towns.length, erosionOn }, net.points, net.levels, net.towns, uniformsData);
+    encodeUniforms({ ...p, mapSize: MAP, res, roadCount: net.count, clearingCount: net.towns.length, riverCount: 0, erosionOn }, net.points, net.levels, net.towns, null, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(res);
     // Kopien laufen in Submit-Reihenfolge nach dem Dispatch

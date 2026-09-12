@@ -54,7 +54,9 @@ Wasserspiegel; 2D-Vorschau, Splatmap (Kanal B) und Straßen kennen das neue Wass
 - [x] F1 hydro.js (Priority-Flood mit `minHeap`, `chaikin`, `resample` aus roadgen exportiert; Test: Tal-Fluss bis Ringfuß,
   Spiegel fallend, Breite bis riverWidth, Grube → See auf Überlauf-Höhe, Meer-Mündung, aus = nichts, verrauscht 15,5 ms,
   deterministisch) — geprüft am 2026-09-12
-- [ ] F2 Shader + Uniform — geprüft am
+- [x] F2 Shader + Uniform (`waterLevel`, `riverCount` in Params → roads ab Byte 128; `rivers` hinter `towns`, 16,6 KB;
+  Bindings `water` + `lakes`; `PRE` nach uniforms.js; Layout-Test inkl. Konstanten und 64-KiB-Grenze; aus: 7 Presets
+  heights + roadMask bitgleich) — geprüft am 2026-09-12
 - [ ] F3 Einbindung — geprüft am
 - [ ] F4 3D-Wasserspiegel — geprüft am
 - [ ] F5 Tuning + Preset — geprüft am

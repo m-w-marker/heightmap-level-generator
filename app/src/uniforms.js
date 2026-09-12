@@ -1,6 +1,7 @@
 // Uniform-Encoding: 1:1 zu struct Params in heightmap.wgsl — die Feldreihenfolge ist der Float-Index.
 // Layout-Regeln + No-Gos → .clinerules/wgsl.md · Layout-Test: tests/uniforms.layout.mjs (→ Plan/Bugfix.md Schritt 2)
 import { MAX_ROADS, ROAD_POINTS, MAX_TOWNS } from './roadgen.js';
+import { MAX_RIVERS, RIVER_POINTS } from './hydro.js';
 
 // Gemessene Noise-Statistik (tests/noise.mjs, 40 Seeds) → Regler wirken in Metern / Flächen-%,
 // bewacht von tests/terrain.stats.mjs (→ Plan/TerrainStrassennetz.md T1)
@@ -63,7 +64,12 @@ export const PARAM_FIELDS = {
     clearingCount: p => p.clearingCount,   // platzierte Orte (≤ townCount), 0 im Prepass
     clearingRadius: p => p.clearingRadius, // m flach um den Ort, Böschung wie an der Straße
     erosionOn: p => p.erosionOn ? 1 : 0,   // erosionDelta addieren (→ Plan/Erosion.md)
+    waterLevel: p => p.waterLevel,         // Wasserspiegel-Ausgang: Meer (→ Plan/Fluesse.md)
+    riverCount: p => p.riverCount,         // Flüsse aus hydrology(), 0 im Prepass
 };
+
+// Prepass-Auflösung (Routing, Hydrologie) = LAKE_RES in heightmap.wgsl (See-Spiegelfeld)
+export const PRE = 128;
 
 // Festes Erosions-Gitter (→ Plan/Erosion.md): unabhängig von der Ausgabe-Auflösung = EROSION_RES in den WGSL-Modulen
 export const EROSION_RES = 512;
@@ -91,13 +97,15 @@ export function encodeErosion(p, erode, out) {
     for (const f of Object.values(EROSION_FIELDS)) out[i++] = f(p, erode);
 }
 
-// Float-Index von roads: Params-Felder auf die 16-Byte-Align des vec4-Arrays aufgefüllt; towns direkt dahinter
+// Float-Index von roads: Params-Felder auf die 16-Byte-Align des vec4-Arrays aufgefüllt; towns, rivers direkt dahinter
 export const ROADS_OFFSET = Math.ceil(Object.keys(PARAM_FIELDS).length / 4) * 4;
 export const TOWNS_OFFSET = ROADS_OFFSET + 4 * MAX_ROADS * ROAD_POINTS;
-export const UNIFORM_FLOATS = TOWNS_OFFSET + 4 * MAX_TOWNS;
+export const RIVERS_OFFSET = TOWNS_OFFSET + 4 * MAX_TOWNS;
+export const UNIFORM_FLOATS = RIVERS_OFFSET + 4 * MAX_RIVERS * RIVER_POINTS;
 
-// towns: [{x, y, level}] aus generateRoads, höchstens MAX_TOWNS (clearingCount muss dazu passen)
-export function encodeUniforms(p, roads, levels, towns, out) {
+// towns: [{x, y, level}] aus generateRoads, höchstens MAX_TOWNS (clearingCount muss dazu passen);
+// rivers: fertig gepackte vec4 aus hydrology() oder null (riverCount muss dazu passen)
+export function encodeUniforms(p, roads, levels, towns, rivers, out) {
     let i = 0;
     for (const f of Object.values(PARAM_FIELDS)) out[i++] = f(p);
     // Rest bis ROADS_OFFSET: Padding (roads muss 16-Byte-aligned liegen)
@@ -108,4 +116,5 @@ export function encodeUniforms(p, roads, levels, towns, out) {
         out[ROADS_OFFSET + 4 * k + 2] = levels[k];
     }
     towns.slice(0, MAX_TOWNS).forEach((t, k) => out.set([t.x, t.y, t.level, 0], TOWNS_OFFSET + 4 * k));
+    if (rivers) out.set(rivers, RIVERS_OFFSET);
 }

@@ -30,6 +30,8 @@ struct Params {
     clearingCount: f32,
     clearingRadius: f32,
     erosionOn: f32, // 1 = erosionDelta addieren, 0 = heutiger Pfad bitgleich (→ Plan/Erosion.md)
+    waterLevel: f32,
+    riverCount: f32,
 };
 
 // = MAX_ROADS / ROAD_POINTS / MAX_TOWNS in roadgen.js (Layout-Test prüft); roads-Array-Größe = Produkt
@@ -37,6 +39,12 @@ const MAX_ROADS = 16u;
 const ROAD_POINTS = 32u;
 const MAX_TOWNS = 8u;
 const EROSION_RES = 512u; // = EROSION_RES in uniforms.js / erosion.wgsl
+const MAX_RIVERS = 16u;   // = MAX_RIVERS / RIVER_POINTS / RIVER_WET in hydro.js
+const RIVER_POINTS = 32u;
+const RIVER_WET = 1.0;    // m: Wasser reicht über das Bett hinaus
+const LAKE_RES = 128u;    // = PRE (Prepass) in uniforms.js: See-Spiegelfeld
+const RIVER_DEPTH = 0.5;  // Tiefe je m halber Breite (= ¼ Breite)
+const RIVER_BANK = 0.577; // tan 30°: Ufer über dem Spiegel, danach steiler wie die Straßen-Böschung
 
 const SLOPE_VAR_WAVE = 40.0; // m
 const SLOPE_MIN = 0.1745;    // 10° in rad
@@ -53,12 +61,15 @@ struct Uniforms {
     params: Params,
     roads: array<vec4<f32>, 512>,
     towns: array<vec4<f32>, 8>,
+    rivers: array<vec4<f32>, 512>, // vec4(x, y, Spiegel m, halbe Breite m) (→ Plan/Fluesse.md)
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read_write> heights: array<f32>;
 @group(0) @binding(2) var<storage, read_write> roadMask: array<f32>;
 @group(0) @binding(3) var<storage, read> erosionDelta: array<f32>; // EROSION_RES², erodiert − roh in m
+@group(0) @binding(4) var<storage, read_write> water: array<f32>;  // res², Wasserspiegel in m
+@group(0) @binding(5) var<storage, read> lakes: array<f32>;        // LAKE_RES², See-Spiegel in m (0 = kein See)
 
 // --- Noise ---
 
@@ -242,6 +253,40 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let rimF = smoothstep(0.0, u.params.rimZone, beyond);
     h += rimF * (0.55 + 0.6 * fbm(w * u.params.rimScale, layerKey(5u), 3)) * u.params.rimAmp; // ~30–80 %, keine gleichmäßige Wand
 
+    // 5b) Seen + Flüsse (→ Plan/Fluesse.md): See-Spiegel = Maximum der 3×3-Nachbarzellen des 128²-Felds → Ufer = Höhenlinie
+    // in voller Auflösung statt 3-m-Treppe. Fluss: nächstes Segment wie bei den Straßen; Bett parabolisch bis Spiegel − Tiefe,
+    // daneben Ufer per bank() über dem Spiegel; nur abtragen, nie aufschütten. Straßen danach → Damm an Kreuzungen
+    var wl = u.params.waterLevel;
+    let lc = vec2<i32>(floor(w / u.params.mapSize * f32(LAKE_RES)));
+    for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let c = clamp(lc + vec2<i32>(dx, dy), vec2<i32>(0), vec2<i32>(i32(LAKE_RES) - 1));
+            wl = max(wl, lakes[u32(c.y) * LAKE_RES + u32(c.x)]);
+        }
+    }
+    let nRivers = min(u32(u.params.riverCount), MAX_RIVERS);
+    if (nRivers > 0u) {
+        var rD = 1e9;
+        var rL = 0.0;
+        var rW = 1.0;
+        for (var r = 0u; r < nRivers; r = r + 1u) {
+            let base = r * RIVER_POINTS;
+            for (var s = 0u; s + 1u < RIVER_POINTS; s = s + 1u) {
+                let a = u.rivers[base + s];
+                let b = u.rivers[base + s + 1u];
+                let dt = distPointSeg(w, a.xy, b.xy);
+                if (dt.x < rD) {
+                    rD = dt.x;
+                    rL = mix(a.z, b.z, dt.y);
+                    rW = mix(a.w, b.w, dt.y);
+                }
+            }
+        }
+        let q = min(rD / rW, 1.0);
+        h = min(h, select(rL + bank(rD - rW, RIVER_BANK), rL - rW * RIVER_DEPTH * (1.0 - q * q), rD < rW));
+        if (rD < rW + RIVER_WET) { wl = max(wl, rL); }
+    }
+
     // 6) Straßen — gewinnt über allem: Fahrbahn folgt dem Gelände im Band Level ± roadTolerance, daneben
     // Böschung mit fester Neigung (Gelände in einen Kegel um das Band geklemmt → Kante nur, wo das Gelände
     // stärker abweicht; tiefer Einschnitt = breitere Böschung, keine Wand)
@@ -252,5 +297,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     heights[idx] = clamp(h / u.params.maxH, 0.0, 1.0);
+    water[idx] = wl;
     roadMask[idx] = 1.0 - smoothstep(u.params.roadHalfWidth, u.params.roadHalfWidth + 1.0, dMin); // nur Fahrbahn (Farbe)
 }
