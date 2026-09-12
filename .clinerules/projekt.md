@@ -16,7 +16,7 @@ Straßen, Abrisskanten, Hügel, Berge, Rand-Ring. Live-Tuning per GUI, Seed-basi
 ## Datenfluss
 Seed + Params → Prepass 128² (ohne Straßen/Rand-Ring) → `roadgen.js` (Orte + Netz, Dijkstra → Polylines
 + Levels) → Uniform-Buffer → `heightmap.wgsl` (Compute 16×16)
-→ Storage `heights` + `roadMask` → Readback → 2D-Preview (Canvas 1024²) + 3D-Mesh (512², `computeVertexNormals`)
+→ Storage `heights` + `roadMask` → Readback → 2D-Preview (Canvas 1024²) + 3D-Mesh (512², `computeVertexNormals`, Preview-Pixel als Farbtextur)
 
 ## Konventionen
 - 1 Unit = 1 m. Höhen im Buffer normalisiert 0–1 (× `maxH`, automatisch = obere Schranke → kein Clamp oben). Wasser-Spiegel 15 m.

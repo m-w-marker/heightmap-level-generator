@@ -72,7 +72,7 @@ R18 README (ganz am Ende)
 - [x] R6 RAW-Export (`src/export.js`, Test `raw.test.mjs`; headless: .r16 = 1024²·2 Byte, wertgleich zu PNG16) — geprüft am 2026-09-12
 - [x] R7 Export-Auflösung (1024 = Original, 513/1025/2049 = Vertex-Gitter auf den Map-Ecken; headless: Größen, Ecken, Splat Σ255, PNG = RAW) — geprüft am 2026-09-12
 - [x] R8 Masken-Export (`src/masks.js`, Test `masks.test.mjs`; Normal DirectX, Krümmung ±10 m mit p99-Skala je Map statt fest ±3 m — Presets 0,8–16 m; headless Mountains 1024/2049 < 1,4 s, Bilder plausibel; Import-Hinweise in `.clinerules/export.md` + Meta `masks`) — geprüft am 2026-09-12
-- [ ] R9 Splatmap im 3D — geprüft am
+- [x] R9 Splatmap im 3D (Rampe war schon als 512²-Vertex-Farben da → Straßenränder Sägezahn; jetzt 1024²-Preview als `DataTexture` mit Mipmaps, Farbwechsel ohne Mesh-Neubau; headless Favorite/Mountains/Lakes fern + nah: Ränder glatt, Farben gleich hell) — geprüft am 2026-09-12
 - [ ] R10 glTF-Export — geprüft am
 - [ ] R11 Texturierung im Tool — geprüft am
 - [ ] R12 Lichtungen — geprüft am

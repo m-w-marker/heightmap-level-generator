@@ -34,6 +34,8 @@ controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI / 2 - 0.05;
 controls.minDistance = 40;
 controls.maxDistance = 1200;
+// headless-Prüfung: Kamera setzen, Readback lesen
+if (import.meta.env.DEV) window.dbg = { camera, controls, get heights() { return heights; }, get roadMask() { return roadMask; }, get maxH() { return params.maxH; } };
 
 // Sonne ≈ 30° hoch + schwächeres Himmelslicht → Relief auch bei flachen Hügeln lesbar
 scene.add(new THREE.HemisphereLight(0xbdd7ff, 0x3a4a33, 0.7));
@@ -171,6 +173,12 @@ async function generate() {
     logStats(roads, levels, count);
     computeSlope();
     refreshView();
+    if (terrain) {
+        scene.remove(terrain);
+        terrain.geometry.dispose();
+    }
+    terrain = buildTerrainMesh();
+    scene.add(terrain);
     const totalMs = performance.now() - t0;
     console.log(`Regeneration: ${totalMs.toFixed(0)} ms`);
     panel.status(`GPU ${gpuMs.toFixed(0)} ms · Roads ${roadMs.toFixed(0)} ms · Total ${totalMs.toFixed(0)} ms`);
@@ -225,15 +233,10 @@ function logStats(roads, levels, count) {
         console.log(`Road level GPU vs. CPU: max Δ ${dMax.toFixed(2)} m · ${nOut}/${nPts} points outside ±${band.toFixed(1)} m`);
 }
 
-// Preview + 3D-Mesh aus dem aktuellen Readback (auch bei reinem Farbwechsel, ohne Regeneration)
+// Preview + 3D-Farbtextur aus dem aktuellen Readback (auch bei reinem Farbwechsel, ohne Regeneration)
 function refreshView() {
     updatePreview();
-    if (terrain) {
-        scene.remove(terrain);
-        terrain.geometry.dispose();
-    }
-    terrain = buildTerrainMesh();
-    scene.add(terrain);
+    terrainTex.needsUpdate = true;
 }
 
 // --- 2D-Preview (Farbcodierung nach Höhe) ---
@@ -335,14 +338,20 @@ function updatePreview() {
 
 // --- M4: 3D-Terrain (→ Plan/Build.md M4) ---
 const TN = 512; // Vertex je Kante; 1 Unit = 1 m
-const terrainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+// Farben = die 1024²-Preview als Textur (→ Plan/Roadmap.md R9): Vertex-Farben auf 512² zeichnen Straßenränder als Sägezahn.
+// Textur-Texel k liegt bei (k + 0.5) / RES wie in sampleBilinear → uv = (u, v) ohne Versatz
+const terrainTex = new THREE.DataTexture(new Uint8Array(pimg.data.buffer), RES, RES);
+terrainTex.colorSpace = THREE.SRGBColorSpace;
+terrainTex.magFilter = THREE.LinearFilter;
+terrainTex.minFilter = THREE.LinearMipmapLinearFilter;
+terrainTex.generateMipmaps = true;
+terrainTex.anisotropy = renderer.getMaxAnisotropy();
+const terrainMat = new THREE.MeshStandardMaterial({ map: terrainTex, roughness: 1, metalness: 0 });
 let terrain = null;
-
-const srgbToLinear = c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 
 function buildTerrainMesh() {
     const pos = new Float32Array(TN * TN * 3);
-    const col = new Float32Array(TN * TN * 3);
+    const uv = new Float32Array(TN * TN * 2);
     const idx = new Uint32Array((TN - 1) * (TN - 1) * 6);
     for (let j = 0; j < TN; j++) {
         for (let i = 0; i < TN; i++) {
@@ -351,11 +360,8 @@ function buildTerrainMesh() {
             pos[o] = -MAP / 2 + u * MAP;
             pos[o + 1] = sampleBilinear(heights, RES, u, v) * params.maxH;
             pos[o + 2] = -MAP / 2 + v * MAP;
-            terrainColor(col, o, pos[o + 1], sampleBilinear(roadMask, RES, u, v), sampleBilinear(slope, RES, u, v), sampleBilinear(relief, RES, u, v));
-            // Vertex-Farben liest three als linear → sRGB-Rampe umrechnen, sonst doppelt aufgehellt (blass)
-            col[o] = srgbToLinear(col[o] / 255);
-            col[o + 1] = srgbToLinear(col[o + 1] / 255);
-            col[o + 2] = srgbToLinear(col[o + 2] / 255);
+            uv[(j * TN + i) * 2] = u;
+            uv[(j * TN + i) * 2 + 1] = v;
         }
     }
     let ii = 0;
@@ -369,7 +375,7 @@ function buildTerrainMesh() {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     geo.computeVertexNormals();
     return new THREE.Mesh(geo, terrainMat);
