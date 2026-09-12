@@ -1,7 +1,7 @@
 // Auto-Material des 3D-Terrains (→ Plan/Texturierung.md): three NodeMaterial (TSL), weil es unter WebGPU kein
 // onBeforeCompile gibt. Terrain-Mesh ohne Transformation → lokal = Welt
 import { MeshStandardNodeMaterial, DataArrayTexture, Vector3, RepeatWrapping, LinearFilter, LinearMipmapLinearFilter, SRGBColorSpace, NoColorSpace } from 'three/webgpu';
-import { texture, uv, uniform, positionWorld, cameraPosition, normalLocal, transformNormalToView, float, vec3, clamp, max, pow, tan, smoothstep, mix, luminance, select } from 'three/tsl';
+import { texture, uv, uniform, positionWorld, cameraPosition, normalLocal, transformNormalToView, mx_noise_float, float, vec2, vec3, clamp, max, pow, tan, smoothstep, mix, luminance, select } from 'three/tsl';
 import { SHORE_RANGE } from './masks.js';
 
 // Ebene im Texture-Array = Ordner in public/textures (austauschbar: albedo.jpg sRGB + normal.jpg OpenGL, beliebige Größe)
@@ -9,7 +9,9 @@ export const LAYERS = ['grass', 'rock', 'gravel', 'sand', 'snow', 'road'];
 const L = Object.fromEntries(LAYERS.map((l, i) => [l, i]));
 const SHORE_WET = 0.3; // m über dem Ufer-Spiegel: Übergang Sandfarbe (unter Wasser) → Farbkarte
 const BLEND_LUMA = 0.3, BLEND_SHARP = 4;
-const TRI_SHARP = 4; // Triplanar: Achsen-Gewicht |N|^4 → schmale Übergangszone zwischen den Projektionen // Höhen-Blend: helle Texel (Steine) setzen sich im Übergang durch statt weich zu mischen
+const TRI_SHARP = 4; // Triplanar: Achsen-Gewicht |N|^4 → schmale Übergangszone zwischen den Projektionen
+const AT_SCALE = 0.29, AT_WAVE = 0.04; // Anti-Tiling: zweites Sample 3,4× größer; Mischmuster ~25 m
+const AT_COS = Math.cos(0.61), AT_SIN = Math.sin(0.61); // gedreht, damit die Kachelkanten nicht parallel liegen // Höhen-Blend: helle Texel (Steine) setzen sich im Übergang durch statt weich zu mischen
 
 // Alle Schichten einer Art als RGBA8-Array size², Zeile 0 = Bildoberkante; eigene Dateien werden auf size skaliert
 async function loadArray(kind, size, srgb, anisotropy) {
@@ -82,8 +84,14 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
         const N = normalLocal.normalize();
         const p = positionWorld.div(u.texScale), uvX = p.zy, uvY = p.xz, uvZ = p.xy;
         const bw = pow(N.abs(), vec3(TRI_SHARP)), bl = bw.div(bw.x.add(bw.y).add(bw.z));
-        const tri = (arr, i, f) => f(arr.sample(uvX).depth(i), 'x').mul(bl.x).add(f(arr.sample(uvY).depth(i), 'y').mul(bl.y)).add(f(arr.sample(uvZ).depth(i), 'z').mul(bl.z));
-        const tex = LAYERS.map((_, i) => i === L.rock ? tri(albedo, i, s => s) : albedo.sample(uvY).depth(i));
+        const tri = (smp, f) => f(smp(uvX), 'x').mul(bl.x).add(f(smp(uvY), 'y').mul(bl.y)).add(f(smp(uvZ), 'z').mul(bl.z));
+        // Anti-Tiling (nur Albedo): zweites Sample 1/AT_SCALE größer und gedreht, per Welt-Noise (AT_WAVE) eingemischt →
+        // die 4-m-Wiederholung zerfällt an großen Flächen (Felswände, Wiesen)
+        const anti = smoothstep(-0.3, 0.3, mx_noise_float(positionWorld.xz.mul(AT_WAVE)));
+        const rot = v => vec2(v.x.mul(AT_COS).sub(v.y.mul(AT_SIN)), v.x.mul(AT_SIN).add(v.y.mul(AT_COS))).mul(AT_SCALE);
+        const alb = i => st => mix(albedo.sample(st).depth(i), albedo.sample(rot(st)).depth(i), anti);
+        const nor = i => st => normals.sample(st).depth(i);
+        const tex = LAYERS.map((_, i) => i === L.rock ? tri(alb(i), s => s) : alb(i)(uvY));
         // Detail-Normalen: OpenGL-Normal Map (u, v, oben), v gespiegelt (Zeile 0 = Bildoberkante liegt bei v = 0);
         // Whiteout-Blend je Projektion (B. Golus) → Welt-Normale
         const unpack = s => vec3(s.x.mul(2).sub(1), s.y.mul(2).sub(1).negate(), s.z.mul(2).sub(1));
@@ -92,7 +100,7 @@ export function createTerrainMaterial(colorTex, maskTex, anisotropy) {
             y: t => vec3(t.x.add(N.x), t.z.abs().mul(N.y), t.y.add(N.z)), // uv = (x, z)
             z: t => vec3(t.x.add(N.x), t.y.add(N.y), t.z.abs().mul(N.z)), // uv = (x, y)
         };
-        const nrm = LAYERS.map((_, i) => (i === L.rock ? tri(normals, i, (s, a) => white[a](unpack(s))) : white.y(unpack(normals.sample(uvY).depth(i)))).normalize());
+        const nrm = LAYERS.map((_, i) => (i === L.rock ? tri(nor(i), (s, a) => white[a](unpack(s))) : white.y(unpack(nor(i)(uvY)))).normalize());
         const b = w.map((v, i) => pow(v.mul(luminance(tex[i].rgb).add(BLEND_LUMA)), BLEND_SHARP));
         const sum = b.reduce((a, v) => a.add(v)).max(1e-6);
         const near = b.reduce((a, v, i) => a.add(tex[i].rgb.mul(v)), vec3(0)).div(sum);

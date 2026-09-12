@@ -1090,7 +1090,7 @@ async function exportLayout() {
 if (!applyHash()) runGenerate();
 
 const walk = createWalk(camera, renderer.domElement, controls, meshHeight, () => params.mapSize / 2);
-if (import.meta.env.DEV) Object.assign(window.dbg, { walk, erosion, readBuffer, autoMat });
+if (import.meta.env.DEV) Object.assign(window.dbg, { walk, erosion, readBuffer, autoMat, renderer, view });
 
 let lastT = 0;
 renderer.setAnimationLoop(t => {
