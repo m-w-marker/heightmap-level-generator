@@ -57,7 +57,9 @@ als Export für Unreal und als Maske für R11/R16.
 - [x] E3 Tuning + Preset „Eroded mountains“ (Mountains + 70 % / 400 / Schutt 65°; Stärke × Dauer wirkt als Produkt, 100 % × 1000
   ergab 1-Zellen-Messergrate → Duration max. 600, 65° Schutt kappt die Grate; headless fern/mid/nah: Rinnen an den Flanken,
   Ablagerung in Talböden, Canyon-Kanten bei 90° scharf, Straße dominant, Level GPU vs. CPU 0 Ausreißer) — geprüft am 2026-09-12
-- [ ] E4 Flow-Map-Export — geprüft am
+- [x] E4 Flow-Map-Export („Flow map PNG“, `flowScale`/`flowBytes` in `masks.js` + Test, `resample(…, centres)` + Test,
+  Metadaten `flowScale` + `masks.flow`; headless Eroded mountains / Mountains (aus → nur Wasser) bei 1024 + 513: Größen stimmen,
+  Rinnennetz hell, Grate dunkel, Korrelation mit Krümmung −0,37 / −0,46, Heightmap nach Export und ↻ bitgleich) — geprüft am 2026-09-12
 - [ ] E5 Seed-Vergleich — geprüft am
 - [ ] E6 Doku — geprüft am
 

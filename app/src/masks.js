@@ -61,8 +61,13 @@ export function curvatureScale(c) {
     return Math.max(a[Math.floor(0.99 * (a.length - 1))], CURV_MIN);
 }
 
+// Flow-Map (→ Plan/Erosion.md): Σ Wassertiefe · |v| der Erosions-Simulation; Skala = p99 je Map wie curvatureScale,
+// log → Rinnen und breite Täler beide sichtbar (linear wären nur die Talböden hell)
+export const flowScale = f => Math.max(Float32Array.from(f).sort()[Math.floor(0.99 * (f.length - 1))], 1e-6);
+
 // --- 8 Bit für den Export ---
 const byte = v => Math.round(Math.min(Math.max(v, 0), 1) * 255);
+export const flowBytes = (f, scale) => Uint8Array.from(f, v => byte(Math.log1p(Math.max(v, 0)) / Math.log1p(scale)));
 export const slopeBytes = deg => Uint8Array.from(deg, d => byte(d / 90));
 export const curvatureBytes = (c, scale) => Uint8Array.from(c, v => byte(0.5 + v / (2 * scale)));
 // RGBA, A = 255 (encodePng kann Grau oder RGBA); rgb = n · 0.5 + 0.5

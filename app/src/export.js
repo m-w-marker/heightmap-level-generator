@@ -15,11 +15,12 @@ export function sampleBilinear(buf, res, u, v) {
 }
 
 // n == res → Original 1:1 (Pixelzentren); sonst Vertex-Gitter mit Samples auf den Map-Ecken (u = i / (n − 1)),
-// wie ein Unreal-Landscape (2ⁿ+1) es erwartet → Ecken = Eck-Pixel des Originals
-export function resample(buf, res, n) {
-    if (n === res) return buf;
-    const out = new Float32Array(n * n);
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) out[j * n + i] = sampleBilinear(buf, res, i / (n - 1), j / (n - 1));
+// wie ein Unreal-Landscape (2ⁿ+1) es erwartet → Ecken = Eck-Pixel des Originals.
+// centres: Ziel-Raster sind Pixelzentren ((i + 0.5) / n) — für Quellen in anderer Auflösung als das Original (Flow-Map 512²)
+export function resample(buf, res, n, centres = n === res) {
+    if (n === res && centres) return buf;
+    const out = new Float32Array(n * n), u = centres ? i => (i + 0.5) / n : i => i / (n - 1);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) out[j * n + i] = sampleBilinear(buf, res, u(i), u(j));
     return out;
 }
 

@@ -1,5 +1,5 @@
 // Masken (→ Plan/Roadmap.md R8): Ebene = Neigung 0 / Normale oben; Rampe = bekannter Winkel; Kamm hell, Mulde dunkel
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN } from '../src/masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN, flowScale, flowBytes } from '../src/masks.js';
 
 let fail = 0;
 function check(cond, msg) {
@@ -49,5 +49,17 @@ for (const sign of [1, -1]) {
     check(sign > 0 ? b > 200 : b < 55, `${sign > 0 ? 'Kuppe hell' : 'Mulde dunkel'}: ${b}`);
 }
 
+// Flow-Map: 0 → 0, Skala (p99) → 255, darüber geklemmt, monoton; Rückrechnung wie in den Metadaten
+{
+    const f = Float32Array.from({ length: 1000 }, (_, i) => i); // p99 = 989
+    const s = flowScale(f), b = flowBytes(f, s);
+    check(s === 989, `Flow: Skala = p99 (${s})`);
+    check(b[0] === 0 && b[989] === 255 && b[999] === 255, `Flow: 0 → ${b[0]}, Skala → ${b[989]}, darüber → ${b[999]}`);
+    check(b.every((v, i) => i === 0 || v >= b[i - 1]), 'Flow: monoton');
+    const back = Math.expm1(b[100] / 255 * Math.log1p(s));
+    check(Math.abs(back - 100) / 100 < 0.03, `Flow: Rückrechnung expm1(v/255 · log1p(scale)) = ${back.toFixed(1)} ≈ 100`);
+    check(flowScale(new Float32Array(10)) > 0, 'Flow: leere Map → Skala > 0 (kein 0/0)');
+}
+
 if (fail) process.exit(1);
-console.log('Masken: OK — Ebene 0° / (128,128,255), Rampe 30° in x und y (DirectX-Normale), Krümmung Rampe 0, Kuppe hell, Mulde dunkel');
+console.log('Masken: OK — Ebene 0° / (128,128,255), Rampe 30° in x und y (DirectX-Normale), Krümmung Rampe 0, Kuppe hell, Mulde dunkel, Flow log/p99');

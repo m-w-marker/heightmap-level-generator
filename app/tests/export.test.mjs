@@ -53,5 +53,18 @@ for (const s of SIZES) {
     check(err < 1e-5, `${s}: lineares Feld innen max Δ ${err}`);
 }
 
+// centres: Quelle RES/2 (wie Flow-Map 512² → 1024²) auf Pixelzentren; lineares Feld bleibt linear (innen)
+{
+    const r = RES / 2, src = new Float32Array(r * r).map((_, i) => (i % r + 0.5) / r + 2 * (Math.floor(i / r) + 0.5) / r);
+    const out = resample(src, r, RES, true);
+    let err = 0;
+    for (let j = 0; j < RES; j++) for (let i = 0; i < RES; i++) {
+        const u = (i + 0.5) / RES, v = (j + 0.5) / RES;
+        if (Math.min(u, v, 1 - u, 1 - v) * r < 0.5) continue;
+        err = Math.max(err, Math.abs(out[j * RES + i] - (u + 2 * v)));
+    }
+    check(out.length === RES * RES && err < 1e-5, `centres ${r} → ${RES}: lineares Feld innen max Δ ${err}`);
+}
+
 if (fail) process.exit(1);
-console.log(`Export-Daten: OK — .r16 ${w}×${h} = ${bytes.length} Byte, Min/Max 0/65535, little endian, bit-genau; Resampling ${SIZES.join('/')}: Ecken, Größe, linear`);
+console.log(`Export-Daten: OK — .r16 ${w}×${h} = ${bytes.length} Byte, Min/Max 0/65535, little endian, bit-genau; Resampling ${SIZES.join('/')}: Ecken, Größe, linear; Pixelzentren aus halber Auflösung`);

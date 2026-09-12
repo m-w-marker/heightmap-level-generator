@@ -5,7 +5,7 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildPanel, seedGrid } from './ui.js';
 import { encodePng } from './png.js';
 import { quantize16, encodeR16, sampleBilinear, resample } from './export.js';
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R } from './masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, UNIFORM_FLOATS, EROSION_RES, autoMaxH } from './uniforms.js';
@@ -159,11 +159,12 @@ let terrain128 = new Float32Array(PRE * PRE); // in Metern (→ Plan/Roads.md)
 // Nacheinander statt überlappend: erosion.delta muss über das await des Prepass bis zum Final-Pass stehen bleiben,
 // eine parallele Seed-Vorschau würde es überschreiben
 let gpuChain = Promise.resolve();
-function computeMap(p, res) {
-    const run = gpuChain.then(() => computeMapNow(p, res));
+function serial(fn) {
+    const run = gpuChain.then(fn);
     gpuChain = run.catch(() => {});
     return run;
 }
+const computeMap = (p, res) => serial(() => computeMapNow(p, res));
 
 const NO_ROADS = new Float32Array(MAX_ROADS * ROAD_POINTS * 2), NO_LEVELS = new Float32Array(MAX_ROADS * ROAD_POINTS);
 
@@ -603,6 +604,7 @@ const panel = buildPanel(params, {
         'Slope mask PNG': () => exportMask('slope'),
         'Normal map PNG': () => exportMask('normal'),
         'Curvature mask PNG': () => exportMask('curvature'),
+        'Flow map PNG': exportFlow,
         'Metadata JSON': exportMeta,
         '3D mesh glTF (.glb)': exportGlb,
         'Heightmap PNG (8-bit preview)': exportPng,
@@ -721,6 +723,22 @@ async function exportMask(kind) {
     download(await encodePng(n, n, px, kind === 'normal' ? 4 : 1, 8), `${kind}-${params.seed}-${n}.png`);
 }
 
+// Flow-Map der aktuellen Einstellungen auf dem Export-Gitter: Simulation neu (deterministisch → dieselbe wie bei der
+// Regeneration); Erosion aus → nur Wasser, Terrain unberührt (→ Plan/Erosion.md).
+// vereinfacht: Simulation läuft vor den Straßen – sie lenken das Wasser in der Flow-Map nicht um
+async function flowExport(n) {
+    const f = await serial(() => {
+        runErosion({ ...params }, params.erosionStrength > 0);
+        return readBuffer(erosion.flow, EROSION_RES * EROSION_RES * 4);
+    });
+    const r = resample(f, EROSION_RES, n, n === RES); // RES = Pixelzentren wie die Heightmap, sonst Vertex-Gitter
+    return { f: r, scale: flowScale(r) };
+}
+async function exportFlow() {
+    const n = exportRes, { f, scale } = await flowExport(n);
+    download(await encodePng(n, n, flowBytes(f, scale), 1, 8), `flow-${params.seed}-${n}.png`);
+}
+
 // Das angezeigte Mesh (TN², 1 Unit = 1 m, Mitte im Ursprung) + Farbtextur eingebettet (→ .clinerules/export.md).
 // vereinfacht: immer TN² statt Export-Größe – 2049² wären ~250 MB Puffer im Browser
 async function exportGlb() {
@@ -729,7 +747,7 @@ async function exportGlb() {
 }
 
 // Maßstab + Konvention für die Engine, dazu alle Einstellungen (Save-Format) → reproduzierbar
-function exportMeta() {
+async function exportMeta() {
     const n = exportRes, grid = n === RES;
     const meta = {
         version: SAVE_VERSION,
@@ -744,10 +762,12 @@ function exportMeta() {
             : 'pixel (i, j) = map (i / (resolution - 1) * mapSize, j / (resolution - 1) * mapSize) (vertices, first/last on the map edges)')
             + '; row j = map y (three.js +z)',
         curvatureScale: curvatureExport(n).scale, // m, je Map (→ masks.curvature)
+        flowScale: (await flowExport(n)).scale, // je Map (→ masks.flow)
         masks: {
             slope: 'slope_deg = value / 255 * 90 (8-bit gray, 0 = flat)',
             normal: 'tangent space, DirectX / Unreal ("green down"): n = rgb / 255 * 2 - 1, R = +column, G = +row, B = up; flip G for OpenGL / Blender',
             curvature: `height - mean height within ±${CURV_R} m; value = 128 + dev / curvatureScale * 127.5, clamped; curvatureScale = 99th percentile of |dev| of this map (bright = ridge, dark = hollow)`,
+            flow: 'where rain water ran in the erosion simulation (sum of depth * speed, before roads); value = 255 * log(1 + flow) / log(1 + flowScale), clamped; flowScale = 99th percentile of this map; bright = gullies and valley floors',
             import: 'masks are linear data: import without sRGB (Unreal: Masks / Linear Color; normal map: Normalmap compression)',
         },
         settings: pickParams(params),
