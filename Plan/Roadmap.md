@@ -66,7 +66,7 @@ R18 README (ganz am Ende)
 ## Abgeschlossen
 - [x] R1 Untracked-Dateien (gelöscht) — geprüft am 2026-09-11
 - [x] R2 Noise-Hash + Version (Statistik neu gemessen, Abweichung < 1 %; 10 Seeds alt/neu gleich verteilt) — geprüft am 2026-09-11
-- [ ] R3 Generierzeit — geprüft am
+- [x] R3 Generierzeit (Statuszeile GPU/Roads/Total, ↻ gesperrt; headless: GPU 6–8 ms, Roads 9–21 ms, Total ~160 ms) — geprüft am 2026-09-12
 - [ ] R4 Undo/Redo — geprüft am
 - [ ] R5 Share-Link — geprüft am
 - [ ] R6 RAW-Export — geprüft am

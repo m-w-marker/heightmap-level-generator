@@ -84,7 +84,7 @@ function menu(id, placeholder, items, pick) {
 }
 
 // cb: change(), color(), presets: [Namen], preset(name), save(), load(), exports: {Label: fn}, regenerate()
-// → { guis: {Tab: GUI}, refresh() }
+// → { guis: {Tab: GUI}, refresh(), status(text), busy(on) }
 export function buildPanel(params, cb) {
     const seed = el('input', { id: 'seed', type: 'number', min: 1, max: 99999, step: 1, value: params.seed, title: 'Seed (seed)' });
     seed.addEventListener('change', () => {
@@ -102,12 +102,14 @@ export function buildPanel(params, cb) {
         seed.value = params.seed;
         cb.change();
     });
+    const regen = button('↻', 'Regenerate', cb.regenerate);
+    const status = el('div', { id: 'status', className: 'row', title: 'Last generation: GPU passes incl. readback, road network, total' });
     const toolbar = el('div', { className: 'toolbar' },
-        el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice,
-            button('↻', 'Regenerate', cb.regenerate)),
+        el('div', { className: 'row' }, el('label', { textContent: 'Seed', htmlFor: 'seed' }), seed, dice, regen),
         el('div', { className: 'row' }, menu('preset', 'Preset…', cb.presets, cb.preset),
             button('Save', 'Save all settings as JSON', cb.save), button('Load', 'Load settings from JSON', cb.load),
-            menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]())));
+            menu('export', 'Export…', Object.keys(cb.exports), name => cb.exports[name]())),
+        status);
 
     const tabBar = el('div', { className: 'tabs' });
     const body = el('div', { className: 'tab-body' });
@@ -144,6 +146,11 @@ export function buildPanel(params, cb) {
         refresh() {
             seed.value = params.seed;
             for (const g of Object.values(guis)) g.controllersRecursive().forEach(c => c.updateDisplay());
+        },
+        status(text) { status.textContent = text; },
+        busy(on) {
+            regen.disabled = on;
+            status.classList.toggle('busy', on);
         },
     };
 }

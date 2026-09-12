@@ -143,6 +143,7 @@ async function generate() {
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(PRE);
     const pre = await readBuffer(heightBuf, PRE * PRE * 4);
+    let gpuMs = performance.now() - t0; // Dispatch + Readback: Zeitstempel erst nach mapAsync, sonst nur Submit gemessen
     for (let i = 0; i < pre.length; i++) terrain128[i] = pre[i] * params.maxH;
 
     // Prepass-Konsole-Check (→ Plan/Roads.md S1): Min/Max ≈ Final-Pass
@@ -155,17 +156,22 @@ async function generate() {
 
     const tr = performance.now();
     const { points: roads, levels, count, nodes } = generateRoads(params.seed, MAP, { size: PRE, data: terrain128 }, params);
-    console.log(`Road network: ${nodes.filter(n => !n.exit).length} towns · ${nodes.filter(n => n.exit).length} exits · ${count} roads · ${(performance.now() - tr).toFixed(0)} ms`);
+    const roadMs = performance.now() - tr;
+    console.log(`Road network: ${nodes.filter(n => !n.exit).length} towns · ${nodes.filter(n => n.exit).length} exits · ${count} roads · ${roadMs.toFixed(0)} ms`);
+    const tg = performance.now();
     encodeUniforms({ ...params, mapSize: MAP, res: RES, roadCount: count }, roads, levels, uniformsData);
     queue.writeBuffer(uniformsBuf, 0, uniformsData);
     dispatch(RES);
     // Kopien laufen in Submit-Reihenfolge nach dem Dispatch
     [heights, roadMask] = await Promise.all([readBuffer(heightBuf, RES * RES * 4), readBuffer(roadMaskBuf, RES * RES * 4)]);
+    gpuMs += performance.now() - tg;
 
     logStats(roads, levels, count);
     computeSlope();
     refreshView();
-    console.log(`Regeneration: ${(performance.now() - t0).toFixed(0)} ms`);
+    const totalMs = performance.now() - t0;
+    console.log(`Regeneration: ${totalMs.toFixed(0)} ms`);
+    panel.status(`GPU ${gpuMs.toFixed(0)} ms · Roads ${roadMs.toFixed(0)} ms · Total ${totalMs.toFixed(0)} ms`);
 }
 
 function dispatch(res) {
@@ -393,12 +399,14 @@ function scheduleGenerate() {
 async function runGenerate() {
     if (genBusy) { genDirty = true; return; }
     genBusy = true;
+    panel.busy(true);
     try {
         await generate();
     } catch (e) {
         console.error('generate:', e);
     } finally {
         genBusy = false;
+        panel.busy(false);
         if (genDirty) { genDirty = false; runGenerate(); }
     }
 }
