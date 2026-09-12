@@ -38,8 +38,11 @@ paths:
 Aktuell: `Params` = 30 × f32 = 120 B → `roads` ab Byte 128 = Float-Index 32; `roads` = `MAX_ROADS × ROAD_POINTS` vec4 (x, y, level m, 0);
 `towns` = `MAX_TOWNS` vec4 (x, y, level m, 0) direkt dahinter (`TOWNS_OFFSET`), Puffer = `UNIFORM_FLOATS`. Layout-Test `tests/uniforms.layout.mjs`.
 `rivers` = `MAX_RIVERS × RIVER_POINTS` vec4 (x, y, Spiegel m, halbe Breite m) hinter `towns` (`RIVERS_OFFSET`); Uniform ≤ 64 KiB.
-Bindings: 3 `erosionDelta` (EROSION_RES²), 4 `water` (res², 0 = Meer), 5 `lakes` (`LAKE_RES` = `PRE`²) (→ `.clinerules/hydro.md`).
-Erosion: `struct E` = `EROSION_FIELDS` (nur f32), Puffer `EROSION_FLOATS` = auf 16 B aufgerundet; Gitter `EROSION_RES` in uniforms.js, heightmap.wgsl und erosion.wgsl (`N`) gleich.
+Bindings: 3 `erosionDelta` (`erosionRes`²), 4 `water` (res², 0 = Meer), 5 `lakes` (`lakeRes`² = Prepass) (→ `.clinerules/hydro.md`).
+Raster kommen aus `grids(mapSize)` in uniforms.js und als Uniform-Felder (`erosionRes`, `lakeRes`, erosion `n`) in die Shader;
+Puffer sind für `grids(Infinity)` (1000 m) angelegt (→ Plan/erledigt/Aufloesung.md).
+Erosion: `struct E` = `EROSION_FIELDS` (nur f32), Puffer `EROSION_FLOATS` = auf 16 B aufgerundet.
+- NICHT eine Rastergröße als WGSL-Konstante oder feste Zahl in JS schreiben, sondern aus `grids()` / Uniform nehmen. Sie hängt an der Map-Größe; eine Konstante liest bei 1000 m im falschen Raster.
 
 ## Symptome
 Readback nur Nullen oder „road level Infinity“ → Shader-Modul abgelehnt (Browser-Konsole) oder Params-Reihenfolge JS ≠ WGSL
@@ -49,4 +52,4 @@ Firefox „featureLevel: compatibility … not yet supported“ (three.webgpu.js
 ## Werkzeuge
 - naga: `C:\naga-proj\target\debug\naga-runner.exe app\src\heightmap.wgsl` → `VALID` oder Fehlerkette
 - `npm run sanity` (Node, ohne Browser)
-- Browser-Konsole: Stats `Heightmap 1024²: …`, `Roads: … road level …` und `Road level GPU vs. CPU: …` sind der Readback-Test
+- Browser-Konsole: Stats `Heightmap <res>²: …`, `Roads: … road level …` und `Road level GPU vs. CPU: …` sind der Readback-Test

@@ -1,7 +1,7 @@
 # Heightmap Level Generator
 
 Procedural heightmap & terrain generator for game levels, running on WebGPU compute shaders (WGSL) in the browser.
-Generates a 1024×1024 heightmap for a square map of 200–1000 m (default 400 m) with roads, towns, cliffs, hills,
+Generates a heightmap at 0.39 m per pixel (1024×1024 for the default 400 m map, 2560×2560 at 1000 m) with roads, towns, cliffs, hills,
 mountains, erosion, rivers and lakes inside a closed border ring — tweak everything live, walk through it and export
 heightmap, masks and mesh for your engine.
 
@@ -19,7 +19,8 @@ heightmap, masks and mesh for your engine.
   of the border ring; hollows fill up to their outflow and become lakes with their own water level; a real water
   surface in 3D (*River valley* preset)
 - **Border ring** — closed raised terrain around the map edge that hides the horizon; exit roads end at its foot
-- **Map size** — 200–1000 m; all meter values keep their meaning, a larger map shows more of the same landscape
+- **Map size** — 200–1000 m; all meter values keep their meaning, a larger map shows more of the same landscape at the
+  same detail (all grids grow with it; ~1 s per generation at 1000 m)
 - **Auto height range** — `maxH` is derived from the settings, nothing gets clipped
 
 **Roads**
@@ -41,7 +42,7 @@ heightmap, masks and mesh for your engine.
 - **Presets** — Rolling hills, Pasture, Mountains, Canyon / Plateaus, Lakes, Eroded mountains, River valley, plus defaults
 - **Save / Load** — all settings incl. seed as JSON; every JSON in `app/presets/` shows up in the preset list
 
-**Export** (size 1024 px, or 513 / 1025 / 2049 px vertex grids for Unreal landscapes)
+**Export** (native size = 0.39 m per pixel, or 513 / 1025 / 2049 px vertex grids for Unreal landscapes)
 - Heightmap as 16-bit PNG and as RAW `.r16` (~2 mm steps), plus an 8-bit preview PNG
 - Splatmap RGBA (R road · G rock · B water/shore · A grass, weights sum to 255)
 - Masks: slope, normal map (DirectX / Unreal), curvature, flow map (where the water ran)
@@ -87,7 +88,7 @@ All distances are in meters (1 unit = 1 m), coverages and river catchment in % o
 
 ## How it works
 
-Seed + parameters → optional erosion on a 512² GPU grid (`erosion.wgsl`) → 128² GPU prepass (terrain only) →
+Seed + parameters → optional erosion on a half-resolution GPU grid (`erosion.wgsl`) → GPU prepass at 3 m cells (terrain only) →
 rivers and lakes on the CPU (`hydro.js`: priority flood, drainage, river courses) → road network on the CPU
 (`roadgen.js`: towns, spanning tree, Dijkstra routing, grade-limited road levels above the water) → uniform buffer →
 compute shader (`heightmap.wgsl`) → height, road mask and water level buffers → readback → 2D canvas preview,

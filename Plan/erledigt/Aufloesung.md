@@ -1,6 +1,6 @@
 # Plan: Auflösung wächst mit der Map-Größe
 
-**Status:** in Arbeit
+**Status:** fertig
 **Datum:** 2026-09-12
 
 ## Ziel
@@ -37,7 +37,15 @@ Alle Raster (Heightmap, Mesh, Erosion, Straßen/Hydrologie) wachsen mit; bei 400
 - [x] A2 main.js variabel (zusammen mit A1, erst beides lauffähig; Vorschau/Textur neu bei Größenwechsel, Export „native“,
   Tests bei 800 m mit mitwachsendem Raster; Wasser-Mesh direkt in Puffer + Normale oben: 630 → 40 ms bei 1000 m;
   400 m: heights + roadMask + Vorschau-Hash bitgleich; 200/700/1000 m ohne WebGPU-Fehler) — geprüft am 2026-09-12
-- [ ] A3 headless 400 vs. 1000 — geprüft am
-- [ ] A4 Doku — geprüft am
+- [x] A3 headless 400 vs. 1000 — geprüft am 2026-09-12
+
+| Map | px | Heightmap | Mesh-Ecken | Regeneration | Fahrbahn m | Fluss m (Messung / Soll) |
+|---|---|---|---|---|---|---|
+| 400 m | 0,390625 m | 1024² | 512² | ~0,2 s | 5,18 | 4,39 / 4,32 |
+| 1000 m | 0,390625 m | 2560² | 1280² | 0,8–1,1 s | 5,08 | 3,32 / 3,24 |
+
+Nahaufnahme aus 20 m gleich scharf; Seed-Vergleich 1000 m 12 Kacheln 3,3 s; Walk läuft; Export native 2560² PNG = RAW,
+Metadaten cellSize 0,390625 m. Mesh-Aufbau (computeVertexNormals, 1,6 Mio. Ecken) ~0,45 s ist der größte Rest.
+- [x] A4 Doku (`projekt.md`, `wgsl.md`, `kamera.md`, `hydro.md`, `export.md`, README) — geprüft am 2026-09-12
 
 <!-- fertig: git mv Plan/<Datei>.md Plan/erledigt/ -->
