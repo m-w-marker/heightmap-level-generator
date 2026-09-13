@@ -12,6 +12,8 @@ export heightmap, splatmap, masks, road and town layout and a 3D mesh for your e
 
 **▶ Try it in your browser: https://m-w-marker.github.io/heightmap-level-generator/** (needs WebGPU, e.g. current desktop Chrome or Edge)
 
+![16 generated maps in a 360° orbit: mountains, lakes, desert highway, eroded mountains, river valley, snow world, canyon and steppe, each with roads](docs/terrain.gif)
+
 ![Procedural terrain generator in the browser: 3D terrain with erosion, lakes, rivers and roads, 2D heightmap preview and parameter panel](docs/generator.png)
 
 ## Use cases
