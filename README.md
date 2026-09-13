@@ -14,7 +14,7 @@ export heightmap, splatmap, masks, road and town layout and a 3D mesh for your e
 
 ![16 generated maps in a 360° orbit: mountains, lakes, desert highway, eroded mountains, river valley, snow world, canyon and steppe, each with roads](docs/terrain.gif)
 
-![Procedural terrain generator in the browser: 3D terrain with erosion, lakes, rivers and roads, 2D heightmap preview and parameter panel](docs/generator.png)
+![Procedural terrain generator in the browser: 3D terrain with hills, cliffs, lakes and a winding road, 2D heightmap preview and parameter panel](docs/generator.jpg)
 
 ## Use cases
 
