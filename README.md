@@ -88,6 +88,7 @@ sharper road, bank, cliff and river edges.
 - Masks: slope, normal map (DirectX / Unreal), curvature, flow map (where the water ran)
 - Road, town and water masks: where the roads, the town clearings and the water are, with a soft edge
 - Water level as 16-bit PNG: height of the water surface per pixel (sea, lakes, rivers), encoded like the heightmap
+- Color map PNG: the colors of the 2D map at export size, without water blue, as a color texture
 - Layout JSON: towns, exits, roads, rivers and lakes as points and connections, for your own scripts
   (see [Masks and layout for your own tools](#masks-and-layout-for-your-own-tools))
 - 3D mesh as glTF `.glb` with the color texture, 1 unit = 1 m
@@ -109,6 +110,10 @@ heightmap. 255 = inside, 0 = outside, with a soft edge instead of hard steps; fo
 `value / 65535 * maxH` for sea, lakes and rivers. Dry pixels hold min(level of the nearest water, terrain), so
 `depth = water level − terrain` works everywhere: dry where depth ≤ 0, and the shoreline stays smooth when both images
 are sampled bilinearly. One water mesh from this grid covers mountain lakes, rivers and the sea.
+
+**Color map PNG**: the colors of the 2D map as RGBA8 sRGB, same size and row order as the heightmap; import it as a
+color texture with sRGB, unlike the masks. There is no water blue: wet pixels carry the shore color, so the ground runs on
+under the water without an edge at the shoreline, and your own water surface goes on top.
 
 **Layout JSON**: the geometry of the generated map, independent of the target engine. Metres, origin in the map
 centre, axes like the `.glb` mesh (right-handed, y up): x = image column, z = image row, x and z from −mapSize/2 to

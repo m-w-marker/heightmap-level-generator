@@ -14,6 +14,7 @@ import { createErosion } from './erosion.js';
 import { createWalk } from './walk.js';
 import { createTerrainMaterial } from './material.js';
 import { BIOMES } from './biomes.js';
+import { spiegel, rockWeight, roadWeight, colorize, colormapBytes } from './colormap.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
 // Hinweis über der Textseite aus index.html, ersetzt sie nicht (Suchmaschinen sehen den Text → Plan/Sichtbarkeit.md)
@@ -376,7 +377,7 @@ const preview = document.getElementById('preview');
 const pctx = preview.getContext('2d');
 let pimg = pctx.createImageData(RES, RES);
 
-// Farbrampe (Wasser/Sand/Gras/Fels/Schnee/Straße) — geteilt von 2D-Preview und 3D-Mesh, damit beide bei gleichem Seed identisch bleiben.
+// Farbrampe (colormap.js) — geteilt von 2D-Preview und 3D-Mesh, damit beide bei gleichem Seed identisch bleiben.
 // In Metern über waterLevel, nicht relativ zu maxH (das ist automatisch → Farben würden je Preset wandern).
 // Höhen setzt applyMaterial() aus den Material-Reglern, Farben aus dem Biom (BIOMES[].ramp: Ufer, Boden, Boden dunkel,
 // Fels-Zone, Schutt, oben); dieselben Stufen nimmt das Auto-Material (material.js)
@@ -384,6 +385,7 @@ const STOPS = [[0], [1.5], [45], [85], [115], [140]];
 let bio = BIOMES.temperate; // Biom der Farbkarte (applyMaterial)
 const ROCK_SLOPE = [0.7, 1.2]; // Hangneigung m/m → Überblendung zu Fels (aus rockSlope / rockBlend)
 const ALPINE = 55; // m: Fels-Zone beginnt so weit unter der Schneegrenze (früher fest 85 bei Schnee 140)
+const ramp = () => ({ stops: STOPS, bio, rockSlope: ROCK_SLOPE, road: roadRGB });
 
 // Material-Regler + Biom → Farbrampe, Fels-Neigung, Stimmung und Auto-Material; Stufen streng steigend, sonst teilt die
 // Rampe durch 0
@@ -409,7 +411,6 @@ function applyMaterial() {
         waterLevel: p.waterLevel, gravelCurv: p.gravelCurv, texScale: p.texScale, texFade: p.texFade, texTint: p.texTint, marks: bio.markings ? 1 : 0,
         sandColor: new THREE.Color().setRGB(...STOPS[0][1].map(v => v / 255), THREE.SRGBColorSpace).toArray() });
 }
-const RELIEF_TINT = 0.06;      // Helligkeit pro m Kuppe/Mulde (±15 % max)
 
 // '#rrggbb' → [r, g, b] 0–255, gecacht: terrainColor läuft 1M× pro Bild
 let roadRGB = [0, 0, 0];
@@ -419,81 +420,18 @@ function setRoadColor() {
 }
 setRoadColor();
 
-// Fels-Anteil nach Hangneigung — geteilt von Farbrampe und Splatmap
-const rockWeight = s => Math.min(Math.max((s - ROCK_SLOPE[0]) / (ROCK_SLOPE[1] - ROCK_SLOPE[0]), 0), 1);
-// Fahrbahn-Anteil aus roadMask (weiche Kante) — geteilt von Farbrampe und Splatmap. Ganze Maskenkante (1 m = 2 px): nur die
-// innere Hälfte war bei 0,5 m/px 1 px breit → Sägezahn am Straßenrand (→ Plan/Pixel05.md)
-const roadWeight = m => Math.min(Math.max(m, 0), 1);
-
-// Wasserspiegel eines Pixels: See/Fluss aus dem Readback, sonst das Meer (→ Plan/Fluesse.md)
-const spiegel = (w, waterLevel) => w || waterLevel;
 // Ufer-Abstand m je Pixel (masks.shoreDist) → Sand an Meer, Seen und Flüssen gleich in Farbkarte, Textur und Splatmap
 const shoreOf = (h, wat, n, p = params) => {
     const near = nearestWater(wat, n, p.mapSize / n);
     return Float32Array.from(h, (v, i) => shoreDist(v * p.maxH, spiegel(wat[i], p.waterLevel), p.waterLevel, near?.level[i], near?.dist[i]));
 };
 
-// schreibt 0–255-Werte (→ Plan/Build.md Datenfluss); W = Wasserspiegel des Pixels, S = Ufer-Abstand m
-function terrainColor(out, o, hm, m, s, rel, W, S) {
-    let r, g, b;
-    if (hm < W) {
-        const t = hm / W, D = bio.water.deep, F = bio.water.shallow;
-        r = D[0] + (F[0] - D[0]) * t;
-        g = D[1] + (F[1] - D[1]) * t;
-        b = D[2] + (F[2] - D[2]) * t;
-    } else {
-        // Sand bis sandHeight Ufer-Abstand (Meer, See, Fluss) wie Splatmap und Textur; darüber die Rampe ab Meereshöhe.
-        // Ohne See in der Nähe ist S = hm − waterLevel → dieselbe Rechnung wie vorher: Sand → Gras linear über STOPS[1]
-        const shore = S / STOPS[1][0];
-        const n = Math.max(hm - params.waterLevel, shore < 1 ? STOPS[1][0] : 0);
-        let a = STOPS[STOPS.length - 2], c = STOPS[STOPS.length - 1];
-        for (let i = 0; i < STOPS.length - 1; i++) {
-            if (n <= STOPS[i + 1][0]) { a = STOPS[i]; c = STOPS[i + 1]; break; }
-        }
-        const f = Math.min((n - a[0]) / (c[0] - a[0]), 1);
-        r = a[1][0] + (c[1][0] - a[1][0]) * f;
-        g = a[1][1] + (c[1][1] - a[1][1]) * f;
-        b = a[1][2] + (c[1][2] - a[1][2]) * f;
-        if (shore < 1) {
-            const S = STOPS[0][1];
-            r = S[0] + (r - S[0]) * shore;
-            g = S[1] + (g - S[1]) * shore;
-            b = S[2] + (b - S[2]) * shore;
-        }
-        const k = rockWeight(s), R = bio.rock;
-        r += (R[0] - r) * k;
-        g += (R[1] - g) * k;
-        b += (R[2] - b) * k;
-        const lit = 1 + Math.min(Math.max(rel * RELIEF_TINT, -0.15), 0.15);
-        r *= lit;
-        g *= lit;
-        b *= lit;
-    }
-    if (m > 0) {
-        const f = roadWeight(m);
-        r = r * (1 - f) + roadRGB[0] * f;
-        g = g * (1 - f) + roadRGB[1] * f;
-        b = b * (1 - f) + roadRGB[2] * f;
-    }
-    out[o] = r;
-    out[o + 1] = g;
-    out[o + 2] = b;
-}
-
 let slope = new Float32Array(RES * RES);  // m/m (slopeRelief in masks.js)
 let shoreL = new Float32Array(RES * RES); // Ufer-Abstand m (shoreOf)
 let relief = new Float32Array(RES * RES);
 
-// Farbrampe → RGBA-Pixel (Alpha 255) für n² Werte
-function colorize(d, n, h, m, s, rel, maxH, wat, waterLevel, shore) {
-    for (let i = 0; i < n * n; i++) {
-        terrainColor(d, i * 4, h[i] * maxH, m[i], s[i], rel[i], spiegel(wat[i], waterLevel), shore[i]);
-        d[i * 4 + 3] = 255;
-    }
-}
-
 function updatePreview() {
-    colorize(pimg.data, RES, heights, roadMask, slope, relief, params.maxH, water, params.waterLevel, shoreL);
+    colorize(pimg.data, RES, ramp(), heights, roadMask, slope, relief, params.maxH, water, params.waterLevel, shoreL);
     pctx.putImageData(pimg, 0, 0);
 }
 
@@ -803,7 +741,7 @@ async function drawThumb(seed, canvas) {
     const m = await computeMap(p, THUMB);
     const { slope: s, relief: rel } = slopeRelief(m.heights, THUMB, p.maxH, p.mapSize);
     const ctx = canvas.getContext('2d'), img = ctx.createImageData(THUMB, THUMB);
-    colorize(img.data, THUMB, m.heights, m.roadMask, s, rel, p.maxH, m.water, p.waterLevel, shoreOf(m.heights, m.water, THUMB, p));
+    colorize(img.data, THUMB, ramp(), m.heights, m.roadMask, s, rel, p.maxH, m.water, p.waterLevel, shoreOf(m.heights, m.water, THUMB, p));
     ctx.putImageData(img, 0, 0);
 }
 
@@ -813,10 +751,10 @@ const exp = { target: 'unreal', size: 0, detail: 1 };
 // Detail ×2: Final-Pass in 2·RES neu (dieselbe Pipeline, schärfere Straßen-/Uferkanten), gecacht bis zur nächsten Regeneration
 let hiSrc = null;
 async function exportSource() {
-    if (exp.detail === 1) return { N: RES, heights, roadMask, water, townMask, slope };
+    if (exp.detail === 1) return { N: RES, heights, roadMask, water, townMask, slope, relief };
     const N = 2 * RES, p = { ...params };
     hiSrc ??= computeMap(p, N).then(m => ({ N, heights: m.heights, roadMask: m.roadMask, water: m.water, townMask: m.townMask,
-        slope: slopeRelief(m.heights, N, p.maxH, p.mapSize).slope }), e => { hiSrc = null; throw e; });
+        ...slopeRelief(m.heights, N, p.maxH, p.mapSize) }), e => { hiSrc = null; throw e; });
     return hiSrc;
 }
 const cellSize = (n, N) => params.mapSize / (n === N ? n : n - 1); // m zwischen zwei Samples
@@ -884,6 +822,7 @@ const panel = buildPanel(params, {
         'Town mask PNG': () => exportArea('town'),
         'Water mask PNG': () => exportArea('water'),
         'Water level PNG (16-bit)': exportWaterLevel,
+        'Color map PNG': exportColormap,
         'Layout JSON': exportLayout,
         'Metadata JSON': exportMeta,
         '3D mesh glTF (.glb)': exportGlb,
@@ -989,19 +928,23 @@ const levelsOnGrid = (src, n) => src.water.some(w => w > 0)
 
 // Splatmap RGBA: R Straße · G Fels · B Wasser + Ufer (bis zur Sand-Grenze der Farbrampe) · A Rest (Gras);
 // Vorrang Straße > Wasser > Fels, Summe je Pixel = 255 (→ Plan/Export.md). Eingaben resamplen, nicht RGBA → Summe bleibt 255.
+// Ufer-Abstand m (0 unter Wasser) auf dem Export-Gitter, geteilt von Splatmap und Farbkarte → deckungsgleich;
+// Spiegel und nächster See je Pixel resamplen, nicht das Ergebnis. ws = levelsOnGrid
+function shoreOnGrid(src, n, hs, ws) {
+    const near = nearestWater(src.water, src.N, params.mapSize / src.N);
+    const lv = near && onGrid(near.level, src.N, n), ld = near && onGrid(near.dist, src.N, n);
+    return Float64Array.from(hs, (v, i) => shoreDist(v * params.maxH, ws[i], params.waterLevel, lv?.[i], ld?.[i]));
+}
 async function exportSplatmap() {
     const src = await exportSource(), n = exportN(src.N), N = src.N;
     const hs = onGrid(src.heights, N, n), ms = onGrid(src.roadMask, N, n), ss = onGrid(src.slope, N, n);
-    // Ufer wie die Farbkarte (Ufer-Abstand, 0 unter Wasser); Spiegel und nächster See je Pixel resamplen, nicht das Ergebnis
-    const ws = levelsOnGrid(src, n), near = nearestWater(src.water, N, params.mapSize / N);
-    const lv = near && onGrid(near.level, N, n), ld = near && onGrid(near.dist, N, n);
+    const sd = shoreOnGrid(src, n, hs, levelsOnGrid(src, n));
     const px = new Uint8Array(n * n * 4), shore = STOPS[1][0];
     for (let i = 0; i < n * n; i++) {
-        const h = hs[i] * params.maxH;
         const road = roadWeight(ms[i]);
-        const wet = Math.min(Math.max(1 - shoreDist(h, ws[i], params.waterLevel, lv?.[i], ld?.[i]) / shore, 0), 1);
+        const wet = Math.min(Math.max(1 - sd[i] / shore, 0), 1);
         const water = (1 - road) * wet;
-        const rock = (1 - road) * (1 - wet) * rockWeight(ss[i]); // (1 − wet), nicht (1 − water): sonst Summe > 1
+        const rock = (1 - road) * (1 - wet) * rockWeight(ss[i], ROCK_SLOPE); // (1 − wet), nicht (1 − water): sonst Summe > 1
         const R = Math.floor(road * 255), G = Math.floor(rock * 255), B = Math.floor(water * 255);
         px[i * 4] = R;
         px[i * 4 + 1] = G;
@@ -1009,6 +952,16 @@ async function exportSplatmap() {
         px[i * 4 + 3] = 255 - R - G - B; // floor → Summe ≤ 255, A ≥ 0
     }
     download(await encodePng(n, n, px, 4, 8), `splatmap-${params.seed}-${n}.png`);
+}
+
+// Farbkarte der Vorschau ohne Wasser-Blau (nass = Ufer-Farbe, das Spiel zeichnet das Wasser); Eingaben resamplen wie
+// die Splatmap, nicht die RGBA-Pixel (→ Plan/Farbkarte.md)
+async function exportColormap() {
+    const src = await exportSource(), n = exportN(src.N), N = src.N;
+    const hs = onGrid(src.heights, N, n), ws = levelsOnGrid(src, n);
+    const px = colormapBytes(n, ramp(), hs, onGrid(src.roadMask, N, n), onGrid(src.slope, N, n), onGrid(src.relief, N, n),
+        params.maxH, ws, params.waterLevel, shoreOnGrid(src, n, hs, ws));
+    download(await encodePng(n, n, px, 4, 8), `colormap-${params.seed}-${n}.png`);
 }
 
 // Masken (Neigung, Normale, Krümmung) auf dem Export-Gitter, aus den schon gespiegelten Höhen → in sich stimmig;
@@ -1101,7 +1054,8 @@ async function exportMeta() {
             town: `8-bit gray, 255 = town clearing (irregular outline, radius ${params.clearingRadius} m ±50 %), fading to 0 over ${TOWN_FADE} m; hard edge = value >= 128; roads not included; empty when townCount = 0 or clearingRadius = 0`,
             water: `8-bit gray, sea + lakes + rivers: value = 255 * clamp(water depth / ${WATER_FADE} m, 0, 1), 0 at the shore; value >= 128 = more than ${WATER_FADE / 2} m deep`,
             waterLevel: '16-bit gray like the heightmap: water surface height_m = value / 65535 * maxH (sea, lakes and rivers); on dry pixels min(level of the nearest water, terrain), so depth = water level - terrain everywhere, dry where depth <= 0, smooth when sampled bilinearly',
-            import: 'masks are linear data: import without sRGB (Unreal: Masks / Linear Color; normal map: Normalmap compression)',
+            colormap: 'RGBA8 sRGB colour ramp of the 2D preview per pixel (biome ramp by height above water level, shore distance, slope rock, road colour, relief tint); wet pixels carry the shore colour, no water blue – draw your own water surface; same size and row order as the heightmap; import as sRGB colour, not as a mask',
+            import: 'masks are linear data: import without sRGB (Unreal: Masks / Linear Color; normal map: Normalmap compression); not the colormap, it is sRGB colour',
         },
         settings: pickParams(params),
     };

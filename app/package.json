@@ -8,7 +8,7 @@
     "build": "vite build",
     "naga": "C:\\naga-proj\\target\\debug\\naga-runner.exe src\\heightmap.wgsl && C:\\naga-proj\\target\\debug\\naga-runner.exe src\\erosion.wgsl",
     "check": "npm run naga && npm run sanity && npm run build",
-    "sanity": "node tests/roadgen.sanity.mjs && node tests/roadgen.sanity.mjs 1024 && node tests/uniforms.layout.mjs && node tests/terrain.stats.mjs && node tests/png.test.mjs && node tests/export.test.mjs && node tests/masks.test.mjs && node tests/hydro.test.mjs && node tests/hydro.test.mjs 1024",
+    "sanity": "node tests/roadgen.sanity.mjs && node tests/roadgen.sanity.mjs 1024 && node tests/uniforms.layout.mjs && node tests/terrain.stats.mjs && node tests/png.test.mjs && node tests/export.test.mjs && node tests/masks.test.mjs && node tests/colormap.test.mjs && node tests/hydro.test.mjs && node tests/hydro.test.mjs 1024",
     "preview": "vite preview"
   },
   "dependencies": {
