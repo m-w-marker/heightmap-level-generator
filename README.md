@@ -53,15 +53,15 @@ export heightmap, splatmap, masks, road and town layout and a 3D mesh for your e
 - **Biomes**: *Temperate*, *Steppe*, *Desert* and *Snow world* change textures, color map, water, light and road surface
   of the whole world without regenerating it; terrain and roads stay, so a canyon in the desert works. In the snow world
   lakes and rivers are ice. The presets *Steppe*, *Desert highway* and *Snow world* set biome, terrain and roads together
-- **Ground textures in 3D**: six layers per biome (ground, rock, scree, shore, top, road; CC0), placed automatically by
-  slope, height, shore and road like an auto-material; rock is projected from three sides, so cliffs don't stretch;
+- **Ground textures in 3D**: six layers per biome (ground, rock, scree, shore, top, road; CC0; temperate ground is a
+  mossy meadow), placed automatically by slope, height, shore and road like an auto-material; rock is projected from three sides, so cliffs don't stretch;
   detail normals catch the light; far away the flat color map takes over
 - **Same rules everywhere**: rock angle, snow line and shore sand drive the 3D textures, the 2D map and the splatmap in
   every biome; the shore layer lines lakes and rivers too
 - **Your own textures**: replace `app/public/textures/<biome>/<layer>/albedo.jpg` and `normal.jpg` (OpenGL normal map,
   any size; layers `ground`, `rock`, `scree`, `shore`, `top`, `road`); sources and licenses in
   `app/public/textures/<biome>/SOURCES.md`; `node tools/fetch-textures.mjs <biome>` (in `app/`) downloads the originals
-  again. Only the active biome is loaded (~16–19 MB)
+  again. Only the active biome is loaded (~16–20 MB)
 - *Textures* off shows the plain color map (lighter on weak GPUs); *Texture size* 1K needs a quarter of the GPU memory
 
 **Tool**

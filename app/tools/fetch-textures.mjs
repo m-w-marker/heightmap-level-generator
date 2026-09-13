@@ -13,7 +13,7 @@ const Q_NORMAL_OF = { steppe: 70 }; // detailreiche Normalen → sonst > 20 MB j
 // je Biom Quelle je Rolle (= Ordnername, den das Material lädt, ROLES in biomes.js)
 const SETS = {
     temperate: {
-        ground: { src: 'ambientcg', id: 'Grass004' },
+        ground: { src: 'ambientcg', id: 'Moss001' }, // Grass004 wirkte synthetisch (gleichmäßiges Rauschen)
         rock: { src: 'ambientcg', id: 'Rock030' },
         scree: { src: 'ambientcg', id: 'Gravel022' },
         shore: { src: 'polyhaven', id: 'coast_sand_01' },

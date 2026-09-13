@@ -11,7 +11,7 @@ export const ROLES = ['ground', 'rock', 'scree', 'shore', 'top', 'road'];
 export const BIOMES = {
     temperate: {
         label: 'Temperate',
-        ramp: [[194, 178, 128], [108, 146, 72], [72, 112, 54], [112, 104, 92], [150, 146, 138], [240, 244, 248]],
+        ramp: [[194, 178, 128], [110, 144, 77], [74, 110, 58], [112, 104, 92], [150, 146, 138], [240, 244, 248]],
         rock: [110, 102, 92],
         water: { deep: [42, 90, 158], shallow: [62, 118, 180], mesh: 0x3d78b0 },
         road: '#9a8462',

@@ -110,22 +110,24 @@ export function createTerrainMaterial(colorTex, maskTex, roadUVTex, anisotropy) 
         const p = positionWorld.div(u.texScale), uvX = p.zy, uvY = p.xz, uvZ = p.xy;
         const bw = pow(N.abs(), vec3(TRI_SHARP)), bl = bw.div(bw.x.add(bw.y).add(bw.z));
         const tri = (smp, f) => f(smp(uvX), 'x').mul(bl.x).add(f(smp(uvY), 'y').mul(bl.y)).add(f(smp(uvZ), 'z').mul(bl.z));
-        // Anti-Tiling (nur Albedo): zweites Sample 1/AT_SCALE größer und gedreht, per Welt-Noise (AT_WAVE) eingemischt →
-        // die 4-m-Wiederholung zerfällt an großen Flächen (Felswände, Wiesen)
+        // Anti-Tiling: zweites Sample 1/AT_SCALE größer und gedreht, per Welt-Noise (AT_WAVE) eingemischt → die 4-m-Wiederholung
+        // zerfällt an großen Flächen (Felswände, Wiesen). Normalen gleich gemischt, sonst liegen die Lichtkanten dort auf
+        // einem anderen Muster als die sichtbaren Halme
         const anti = smoothstep(-0.3, 0.3, mx_noise_float(positionWorld.xz.mul(AT_WAVE)));
         const rot = v => vec2(v.x.mul(AT_COS).sub(v.y.mul(AT_SIN)), v.x.mul(AT_SIN).add(v.y.mul(AT_COS))).mul(AT_SCALE);
         const alb = i => st => mix(albedo.sample(st).depth(i), albedo.sample(rot(st)).depth(i), anti);
-        const nor = i => st => normals.sample(st).depth(i);
         const tex = ROLES.map((_, i) => i === L.rock ? tri(alb(i), s => s) : alb(i)(uvY));
         // Detail-Normalen: OpenGL-Normal Map (u, v, oben), v gespiegelt (Zeile 0 = Bildoberkante liegt bei v = 0);
         // Whiteout-Blend je Projektion (B. Golus) → Welt-Normale
         const unpack = s => vec3(s.x.mul(2).sub(1), s.y.mul(2).sub(1).negate(), s.z.mul(2).sub(1));
+        const back = t => vec3(t.x.mul(AT_COS).add(t.y.mul(AT_SIN)), t.y.mul(AT_COS).sub(t.x.mul(AT_SIN)), t.z); // Drehung von rot() zurück
+        const nor = i => st => mix(unpack(normals.sample(st).depth(i)), back(unpack(normals.sample(rot(st)).depth(i))), anti);
         const white = {
             x: t => vec3(t.z.abs().mul(N.x), t.y.add(N.y), t.x.add(N.z)), // uv = (z, y)
             y: t => vec3(t.x.add(N.x), t.z.abs().mul(N.y), t.y.add(N.z)), // uv = (x, z)
             z: t => vec3(t.x.add(N.x), t.y.add(N.y), t.z.abs().mul(N.z)), // uv = (x, y)
         };
-        const nrm = ROLES.map((_, i) => (i === L.rock ? tri(nor(i), (s, a) => white[a](unpack(s))) : white.y(unpack(nor(i)(uvY)))).normalize());
+        const nrm = ROLES.map((_, i) => (i === L.rock ? tri(nor(i), (t, a) => white[a](t)) : white.y(nor(i)(uvY))).normalize());
         const b = w.map((v, i) => pow(v.mul(luminance(tex[i].rgb).add(BLEND_LUMA)), BLEND_SHARP));
         const sum = b.reduce((a, v) => a.add(v)).max(1e-6);
         const near = b.reduce((a, v, i) => a.add(tex[i].rgb.mul(v)), vec3(0)).div(sum);
