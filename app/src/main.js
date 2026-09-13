@@ -16,11 +16,15 @@ import { createTerrainMaterial } from './material.js';
 import { BIOMES } from './biomes.js';
 
 // M1: Renderer + Szene (→ Plan/Build.md M1)
+// Hinweis über der Textseite aus index.html, ersetzt sie nicht (Suchmaschinen sehen den Text → Plan/Sichtbarkeit.md)
 function noWebGPU(detail) {
-    document.body.innerHTML = `<pre style="color:#f88;background:#0e1116;margin:0;height:100%;padding:20px;white-space:pre-wrap">`
-        + `WebGPU not available${detail ? ':\n' + detail : '.'}\n\n`
+    const box = document.createElement('p');
+    box.className = 'error';
+    box.textContent = `WebGPU not available${detail ? ':\n' + detail : '.'}\n\n`
         + `This tool needs a browser with WebGPU (desktop Chrome/Edge 113+, Safari 26+, Firefox 141+ on Windows)\n`
-        + `and a secure context (https or localhost).</pre>`;
+        + `and a secure context (https or localhost).`;
+    document.getElementById('about').prepend(box);
+    document.getElementById('preview').style.display = 'none'; // canvas { display: block } schlägt hidden
 }
 const renderer = new WebGPURenderer({ antialias: true });
 try {
@@ -34,6 +38,7 @@ if (!renderer.backend.isWebGPUBackend) {
     noWebGPU();
     throw new Error('WebGPU not available (WebGL fallback)');
 }
+document.getElementById('about').hidden = true;
 
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);

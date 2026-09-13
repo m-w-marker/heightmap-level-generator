@@ -3,10 +3,48 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WebGPU Heightmap Generator</title>
+    <!-- Suchmaschinen + Link-Vorschau (→ Plan/Sichtbarkeit.md S1); URLs absolut, Pages-Adresse -->
+    <title>Heightmap Level Generator: free procedural terrain for Unreal, Unity and Godot</title>
+    <meta name="description" content="Free browser tool: procedural terrain with roads, towns, erosion, rivers and lakes on the GPU. Exports 16-bit heightmaps, splatmaps, masks, layout JSON and glTF for Unreal Engine, Unity, Godot and three.js." />
+    <link rel="canonical" href="https://m-w-marker.github.io/heightmap-level-generator/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Heightmap Level Generator" />
+    <meta property="og:description" content="Free procedural terrain generator in the browser: roads, towns, erosion, rivers, lakes. Heightmap, splatmap, masks and glTF export for Unreal, Unity and Godot." />
+    <meta property="og:url" content="https://m-w-marker.github.io/heightmap-level-generator/" />
+    <meta property="og:image" content="https://m-w-marker.github.io/heightmap-level-generator/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Heightmap Level Generator" />
+    <meta name="twitter:description" content="Free procedural terrain generator in the browser: roads, towns, erosion, rivers, lakes. Heightmap, splatmap, masks and glTF export for Unreal, Unity and Godot." />
+    <meta name="twitter:image" content="https://m-w-marker.github.io/heightmap-level-generator/og.jpg" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Heightmap Level Generator",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Web browser with WebGPU",
+      "url": "https://m-w-marker.github.io/heightmap-level-generator/",
+      "image": "https://m-w-marker.github.io/heightmap-level-generator/og.jpg",
+      "description": "Procedural terrain and heightmap generator for Unreal Engine, Unity and Godot, running on WebGPU in the browser.",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "sameAs": "https://github.com/m-w-marker/heightmap-level-generator"
+    }
+    </script>
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1116; }
       canvas { display: block; }
+      /* Textseite ohne WebGPU (Suchmaschinen, Link-Vorschau); main.js blendet sie aus, sobald WebGPU läuft */
+      #about {
+        position: fixed; inset: 0; overflow-y: auto; padding: 48px 24px; box-sizing: border-box;
+        color: #ebebeb; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      #about > * { max-width: 720px; margin: 0 auto 16px; }
+      #about h1 { font-size: 26px; }
+      #about a { color: #2cc9ff; }
+      #about img { display: block; width: 100%; border-radius: 8px; }
+      #about .error { background: #3a1d1d; border: 1px solid #7a3030; border-radius: 8px; padding: 12px 16px; white-space: pre-wrap; }
       #preview {
         position: fixed; left: 12px; bottom: 12px;
         width: 260px; height: 260px;
@@ -74,6 +112,25 @@
     </style>
   </head>
   <body>
+    <main id="about">
+      <h1>Heightmap Level Generator</h1>
+      <p>Free procedural terrain and heightmap generator for Unreal Engine, Unity and Godot, running in your browser on
+        WebGPU. No install, no account.</p>
+      <p>Generates a 16-bit heightmap at 0.5 m per pixel (1024×1024 for a 512 m map, up to 2560×2560) with a road
+        network, towns, cliffs, hills, mountains, erosion, rivers and lakes, in four biomes. Tweak everything live,
+        walk through it in first person, compare seeds and export for your engine.</p>
+      <ul>
+        <li>Unreal Engine landscape: 16-bit PNG or <code>.r16</code> with the import values in the metadata</li>
+        <li>Unity terrain: <code>.r16</code>, Godot Terrain3D: 16-bit PNG</li>
+        <li>Splatmap, slope, normal, curvature, flow, road, town and water masks</li>
+        <li>Layout JSON with roads, towns, rivers and lakes for PCG, Houdini or your own scripts</li>
+        <li>glTF mesh with color texture for three.js and WebGPU scenes</li>
+      </ul>
+      <p>Needs a browser with WebGPU: desktop Chrome or Edge 113+, Safari 26+, Firefox 141+ on Windows.
+        Source, documentation and screenshots:
+        <a href="https://github.com/m-w-marker/heightmap-level-generator">github.com/m-w-marker/heightmap-level-generator</a></p>
+      <img src="./og.jpg" width="1200" height="630" alt="3D terrain with lakes, rivers and roads, 2D heightmap preview and parameter panel" />
+    </main>
     <div id="credit">heightmap-level-generator by Michael Marker</div>
     <canvas id="preview" width="1024" height="1024"></canvas>
     <script type="module" src="/src/main.js"></script>
