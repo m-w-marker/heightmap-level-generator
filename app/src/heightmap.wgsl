@@ -56,7 +56,8 @@ const SLOPE_MAX = 1.0472;    // 60° in rad (steiler → senkrechte Streifenwän
 const BANK_CURVE = 10.0;     // m: Böschungsneigung (tan) wächst je BANK_CURVE m Abstand um 1 (→ Plan/Boeschung.md)
 const CLEARING_BANK = 0.268; // tan 15°: Lichtungsrand startet flacher als die Straßen-Böschung → keine Gruben am Hang
 const CLEARING_WOBBLE = 0.5; // Radius ±50 % per Noise → unregelmäßiger Umriss statt Kreis
-const CLEARING_WAVE = 9.0;   // m Wellenlänge des Umriss-Noise (≈ Radius → 2–4 Ausbuchtungen je Lichtung)
+const CLEARING_LOBES = 1.0;  // Noise-Einheiten Radius des Umriss-Kreises → 2πL Zellen ≈ 3–4 Ausbuchtungen je Lichtung
+const CLEARING_SOFT = 3.0;   // Lichtungs-Böschung wird CLEARING_SOFT-mal langsamer steil als die Straßen-Böschung
 const CLEARING_KEEP = 0.5;   // m Restwelligkeit im Kern → nicht spiegelglatt
 const TOWN_FADE = 4.0;       // m weicher Rand der townMask hinter dem Lichtungs-Umriss (= TOWN_FADE in masks.js)
 // Straßen-Koordinaten roadUV (→ Plan/Biome.md, Codierung in masks.js)
@@ -230,17 +231,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // 3b) Lichtungen: Gelände um den Ort zum Level seiner Straßen-Enden gezogen; erlaubte Abweichung e wächst wie eine
     // Böschung (keine feste Breite → keine Wände am Hang), ab CLEARING_BANK flach → läuft aus statt Grube.
-    // Organisch statt Kreis: Radius per Noise ±CLEARING_WOBBLE, innen bleiben ±CLEARING_KEEP m Wellen, weiche Sättigung
-    // e·tanh(Δ/e) statt clamp → kein Knick am Rand. Vor Rand-Ring (bleibt geschlossen) und Straßen (gewinnen weiter)
-    // (→ Plan/Roadmap.md R12)
+    // Organisch statt Kreis: Radius je Richtung per Noise ±CLEARING_WOBBLE (nur vom Winkel abhängig → zusammenhängend;
+    // Noise über der Weltposition stanzte Inseln = Krater neben die Lichtung), innen bleiben ±CLEARING_KEEP m Wellen,
+    // weiche Sättigung e·tanh(Δ/e) statt clamp → kein Knick am Rand. Vor Rand-Ring (bleibt geschlossen) und Straßen
+    // (gewinnen weiter) (→ Plan/Roadmap.md R12)
     let cr = u.params.clearingRadius;
     let nTowns = select(0u, min(u32(u.params.clearingCount), MAX_TOWNS), cr > 0.0); // Radius 0 = aus
-    let wobble = 1.0 + CLEARING_WOBBLE * vnoise(w / CLEARING_WAVE, layerKey(7u));
     var townM = 0.0;
     for (var t = 0u; t < nTowns; t = t + 1u) {
         let c = u.towns[t];
-        let dOut = max(length(w - c.xy) - cr * wobble, 0.0);
-        let e = CLEARING_KEEP + bank(dOut, CLEARING_BANK);
+        let d = length(w - c.xy);
+        let dir = (w - c.xy) / max(d, 1e-3);
+        let wobble = 1.0 + CLEARING_WOBBLE * vnoise(dir * CLEARING_LOBES, mix32(layerKey(7u) + t));
+        let dOut = max(d - cr * wobble, 0.0);
+        let e = CLEARING_KEEP + bank(dOut / CLEARING_SOFT, CLEARING_BANK) * CLEARING_SOFT;
         h = c.z + e * tanh(clamp((h - c.z) / e, -10.0, 10.0)); // clamp: tanh großer Argumente → exp-Überlauf (NaN) je GPU
         townM = max(townM, 1.0 - smoothstep(0.0, TOWN_FADE, dOut));
     }
