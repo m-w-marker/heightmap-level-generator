@@ -184,3 +184,9 @@ color map with distance.
 ## Tech
 
 WebGPU · WGSL · three.js (r186) · lil-gui · Vite
+
+## License
+
+MIT, see [LICENSE](LICENSE). Free to use, change and ship, also in commercial games. Everything you export from the
+generator (heightmaps, masks, layout, meshes) is yours without any conditions. The textures in `app/public/textures/`
+are CC0, see their sources.
