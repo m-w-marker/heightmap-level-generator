@@ -5,7 +5,7 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildPanel, seedGrid } from './ui.js';
 import { encodePng } from './png.js';
 import { quantize16, encodeR16, sampleBilinear, resample, TARGETS, exportSizes, engineImport, flipRows, exportGrid, layout } from './export.js';
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, TOWN_FADE, slopeRelief, materialMask, nearestWater, shoreDist } from './masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, TOWN_FADE, slopeRelief, materialMask, nearestWater, shoreDist, waterSurface } from './masks.js';
 import WGSL from './heightmap.wgsl?raw';
 import { generateRoads, MAX_ROADS, ROAD_POINTS } from './roadgen.js';
 import { encodeUniforms, UNIFORM_FLOATS, grids, autoMaxH } from './uniforms.js';
@@ -883,6 +883,7 @@ const panel = buildPanel(params, {
         'Road mask PNG': () => exportArea('road'),
         'Town mask PNG': () => exportArea('town'),
         'Water mask PNG': () => exportArea('water'),
+        'Water level PNG (16-bit)': exportWaterLevel,
         'Layout JSON': exportLayout,
         'Metadata JSON': exportMeta,
         '3D mesh glTF (.glb)': exportGlb,
@@ -973,6 +974,13 @@ async function exportPng16() {
 async function exportR16() {
     const src = await exportSource(), n = exportN(src.N);
     download(new Blob([encodeR16(quantize16(onGrid(src.heights, src.N, n)))], { type: 'application/octet-stream' }), `heightmap-${params.seed}-${n}.r16`);
+}
+
+// Nativ rechnen, dann onGrid wie die Heightmap → exportierte Tiefe = interpolierte native Tiefe (→ Plan/WasserspiegelExport.md)
+async function exportWaterLevel() {
+    const src = await exportSource(), n = exportN(src.N);
+    const s = waterSurface(src.heights, src.water, src.N, params.maxH, params.waterLevel);
+    download(await encodePng(n, n, quantize16(onGrid(s, src.N, n)), 1, 16), `waterlevel-${params.seed}-${n}-16bit.png`);
 }
 
 // Wasser = Meer, Seen, Flüsse: Spiegel je Pixel resamplen, nicht die 0-codierten Rohwerte (0 = Meer) (→ Plan/Fluesse.md)
@@ -1092,6 +1100,7 @@ async function exportMeta() {
             road: `8-bit gray, 255 = road surface (${params.roadWidth} m wide), soft 1 m edge to 0; hard edge = value >= 128; same as splatmap R without its priorities; empty when townCount = 0`,
             town: `8-bit gray, 255 = town clearing (irregular outline, radius ${params.clearingRadius} m ±50 %), fading to 0 over ${TOWN_FADE} m; hard edge = value >= 128; roads not included; empty when townCount = 0 or clearingRadius = 0`,
             water: `8-bit gray, sea + lakes + rivers: value = 255 * clamp(water depth / ${WATER_FADE} m, 0, 1), 0 at the shore; value >= 128 = more than ${WATER_FADE / 2} m deep`,
+            waterLevel: '16-bit gray like the heightmap: water surface height_m = value / 65535 * maxH (sea, lakes and rivers); on dry pixels min(level of the nearest water, terrain), so depth = water level - terrain everywhere, dry where depth <= 0, smooth when sampled bilinearly',
             import: 'masks are linear data: import without sRGB (Unreal: Masks / Linear Color; normal map: Normalmap compression)',
         },
         settings: pickParams(params),

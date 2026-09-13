@@ -128,6 +128,15 @@ export function nearestWater(water, n, cell) {
     return { level, dist };
 }
 
+// Water level (16-Bit-Export, → Plan/WasserspiegelExport.md): nass = Spiegel (Meer, See, Fluss), trocken = min(Spiegel des
+// nächsten Wassers, Gelände) statt 0 → Tiefe = Spiegel − Gelände überall ≤ 0 trocken, bilinear glatt am Ufer.
+// h 0–1, water = Readback (0 = Meer), sea = waterLevel → 0–1 wie h
+export function waterSurface(h, water, n, maxH, sea) {
+    const wet = Float32Array.from(h, (v, i) => { const l = water[i] || sea; return v * maxH < l ? l : 0; });
+    const near = nearestWater(wet, n, 1);
+    return Float32Array.from(h, (v, i) => (wet[i] || Math.min(near ? near.level[i] : sea, v * maxH)) / maxH);
+}
+
 // Abstand zum Ufer in m (Sand bis sandHeight): 0 unter Wasser (h < W), sonst der kleinere von Höhe über dem Meer und
 // |h − Spiegel des nächsten Sees/Flusses| + SHORE_DROP · Abstand (Betrag: hangab eines Bergsees ist kein Ufer; Abstand:
 // flaches Ufer läuft über sandHeight / SHORE_DROP m aus, keine Höhenlinien-Ringe). Ohne See in der Nähe = wie früher

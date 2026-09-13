@@ -1,5 +1,5 @@
 // Masken (→ Plan/Roadmap.md R8): Ebene = Neigung 0 / Normale oben; Rampe = bekannter Winkel; Kamm hell, Mulde dunkel
-import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, materialMask, SHORE_RANGE, slopeRelief, nearestWater, shoreDist, SHORE_DROP } from '../src/masks.js';
+import { gradient, slopeDeg, normals, curvature, slopeBytes, normalBytes, curvatureBytes, curvatureScale, CURV_R, CURV_MIN, flowScale, flowBytes, unitBytes, waterBytes, WATER_FADE, materialMask, SHORE_RANGE, slopeRelief, nearestWater, shoreDist, SHORE_DROP, waterSurface } from '../src/masks.js';
 
 let fail = 0;
 function check(cond, msg) {
@@ -101,6 +101,23 @@ for (const sign of [1, -1]) {
     check(shoreDist(31, 15, 15, 30, 0) === 1 && Math.abs(shoreDist(30, 15, 15, 30, 10) - 10 * SHORE_DROP) < 1e-9, 'Ufer-Abstand am See: Höhe + Entfernung');
     check(shoreDist(20, 15, 15, 30, 2) === 5, 'Ufer-Abstand hangab eines Bergsees: Meer näher (5 m), kein Sand');
 }
+// Water level: Rampe aus dem Meer (12 m + x, nass bis x = 2), See (30 m) bei x = 7, Einschnitt (25 m, trocken) bei x = 8
+{
+    const N = 9, sea = 15, h = new Float32Array(N * N), w = new Float32Array(N * N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) h[y * N + x] = (x === 7 ? 28 : x === 8 ? 25 : 12 + x) / maxH;
+    for (let y = 0; y < N; y++) w[y * N + 7] = 30;
+    const s = waterSurface(h, w, N, maxH, sea), m = i => s[i] * maxH, g = i => h[i] * maxH;
+    let ok = true, dry = true;
+    for (let i = 0; i < N * N; i++) {
+        const x = i % N, want = x < 3 ? sea : x === 7 ? 30 : Math.min(x - 2 < Math.abs(7 - x) ? sea : 30, g(i));
+        if (Math.abs(m(i) - want) > 1e-4) ok = false;
+        if (x >= 3 && x !== 7 && m(i) > g(i) + 1e-6) dry = false;
+    }
+    check(ok, `Water level: Meer 15, See 30, trocken = min(nächster Spiegel, Gelände): ${Array.from({ length: N }, (_, x) => m(x).toFixed(1))}`);
+    check(dry && Math.abs(m(8) - g(8)) < 1e-6, 'Water level: trocken Tiefe ≤ 0, Einschnitt unter dem Seespiegel Tiefe 0');
+    check(waterSurface(h.map(() => 0.5), new Float32Array(N * N), N, maxH, sea).every(v => Math.abs(v * maxH - sea) < 1e-4),'Water level: ganz trocken → Meeresspiegel');
+}
+
 // slopeRelief: Rampe 30° innen, Relief einer Rampe 0
 {
     const t = Math.tan(30 * Math.PI / 180), h = field(x => 10 + x * cell * t), { slope, relief } = slopeRelief(h, n, maxH, n * cell);
@@ -109,4 +126,4 @@ for (const sign of [1, -1]) {
 }
 
 if (fail) process.exit(1);
-console.log('Masken: OK — Ebene 0° / (128,128,255), Rampe 30° in x und y (DirectX-/OpenGL-Normale), Krümmung Rampe 0, Kuppe hell, Mulde dunkel, Flow log/p99, Flächen-/Water mask');
+console.log('Masken: OK — Ebene 0° / (128,128,255), Rampe 30° in x und y (DirectX-/OpenGL-Normale), Krümmung Rampe 0, Kuppe hell, Mulde dunkel, Flow log/p99, Flächen-/Water mask, Water level');

@@ -87,6 +87,7 @@ sharper road, bank, cliff and river edges.
 - Splatmap RGBA (R road · G rock · B water/shore · A grass, weights sum to 255)
 - Masks: slope, normal map (DirectX / Unreal), curvature, flow map (where the water ran)
 - Road, town and water masks: where the roads, the town clearings and the water are, with a soft edge
+- Water level as 16-bit PNG: height of the water surface per pixel (sea, lakes, rivers), encoded like the heightmap
 - Layout JSON: towns, exits, roads, rivers and lakes as points and connections, for your own scripts
   (see [Masks and layout for your own tools](#masks-and-layout-for-your-own-tools))
 - 3D mesh as glTF `.glb` with the color texture, 1 unit = 1 m
@@ -103,6 +104,11 @@ heightmap. 255 = inside, 0 = outside, with a soft edge instead of hard steps; fo
 - *Town*: the flat clearing around each town, irregular outline, soft 4 m edge; roads are not included. Empty when
   *Towns* = 0 or the clearing radius is 0
 - *Water*: sea, lakes and rivers; value = water depth / 0.4 m (0 at the shore, 128 = 0.2 m deep)
+
+**Water level PNG (16-bit)**: same size, encoding and row order as the heightmap, water surface in m =
+`value / 65535 * maxH` for sea, lakes and rivers. Dry pixels hold min(level of the nearest water, terrain), so
+`depth = water level − terrain` works everywhere: dry where depth ≤ 0, and the shoreline stays smooth when both images
+are sampled bilinearly. One water mesh from this grid covers mountain lakes, rivers and the sea.
 
 **Layout JSON**: the geometry of the generated map, independent of the target engine. Metres, origin in the map
 centre, axes like the `.glb` mesh (right-handed, y up): x = image column, z = image row, x and z from −mapSize/2 to
