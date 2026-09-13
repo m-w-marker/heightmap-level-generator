@@ -7,7 +7,9 @@ export const ROLES = ['ground', 'rock', 'scree', 'shore', 'top', 'road'];
 // ramp: sRGB 0–255 in der Reihenfolge der STOPS (Ufer, Boden, Boden dunkel, Fels-Zone, Schutt, oben); rock: steile Hänge;
 // water: Farbkarte tief/flach + Wasser-Mesh; road: Straßenfarbe, die ein Biom-Wechsel setzt; sky: Hintergrund + Nebel;
 // hemi: [Himmel, Boden, Stärke], sun: [Farbe, Stärke]; ice: Seen/Flüsse gefroren → water = Eis-Farben, Wasser-Mesh mit
-// Eis-Material (Ufer-Textur) statt water.mesh; markings: Asphalt mit Mittel- und Randlinien (material.js)
+// Eis-Material (Ufer-Textur) statt water.mesh; markings: Asphalt mit Mittel- und Randlinien (material.js);
+// antiTile: {Rolle: Maßstab des zweiten Anti-Tiling-Samples}, Standard 0.29 (3,4× größer) – kleiner vergrößern bei
+// Texturen mit erkennbaren Halmen/Blättern, sonst Riesenhalme
 export const BIOMES = {
     temperate: {
         label: 'Temperate',
@@ -26,6 +28,7 @@ export const BIOMES = {
         water: { deep: [38, 78, 112], shallow: [72, 110, 128], mesh: 0x3f6f8a },
         road: '#5a5854',
         markings: true,
+        antiTile: { ground: 0.6 }, // withered_grass: Halme und Blätter, 1,7× statt 3,4×
         sky: 0x15130f,
         hemi: [0xdcdcc8, 0x5a4a30, 0.7],
         sun: [0xffe8c8, 2.8],

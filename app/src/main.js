@@ -396,6 +396,7 @@ function applyMaterial() {
     sun.intensity = bio.sun[1];
     waterMat.color.set(bio.water.mesh);
     setMaterials(); // Wasser ↔ Eis
+    autoMat.setAntiTile(bio.antiTile);
     if (p.biome !== texBiome) loadTextures();
     ROCK_SLOPE[0] = Math.tan(p.rockSlope * Math.PI / 180);
     ROCK_SLOPE[1] = Math.tan(Math.min(p.rockSlope + p.rockBlend, 89) * Math.PI / 180);

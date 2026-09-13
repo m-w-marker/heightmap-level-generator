@@ -15,7 +15,8 @@ const ICE_ROUGH = 0.35; // glatter → die Risse der Detail-Normalen glitzern im
 const LINE_W = 0.15, EDGE_IN = 0.3, DASH_LEN = 3, PAINT = 0.85; // PAINT < 1: abgefahrene Farbe, Belag scheint durch
 const YELLOW = [0.78, 0.5, 0.06], WHITE = [0.75, 0.75, 0.72]; // linear
 const TRI_SHARP = 4; // Triplanar: Achsen-Gewicht |N|^4 → schmale Übergangszone zwischen den Projektionen
-const AT_SCALE = 1, AT_WAVE = 0.04; // Anti-Tiling: zweites Sample gleich groß (vergrößert gab es Riesenhalme); Mischmuster ~25 m
+// Anti-Tiling: zweites Sample 3,4× größer (Standard, je Biom und Rolle über BIOMES[].antiTile), Mischmuster ~25 m
+const AT_SCALE = 0.29, AT_WAVE = 0.04;
 const AT_COS = Math.cos(0.61), AT_SIN = Math.sin(0.61); // gedreht, damit die Kachelkanten nicht parallel liegen // Höhen-Blend: helle Texel (Steine) setzen sich im Übergang durch statt weich zu mischen
 
 // Alle Schichten einer Art als RGBA8-Array size², Zeile 0 = Bildoberkante; eigene Dateien werden auf size skaliert
@@ -62,6 +63,7 @@ export function createTerrainMaterial(colorTex, maskTex, roadUVTex, anisotropy) 
         marks: uniform(0), halfWidth: uniform(2), // Markierungen an (1) / aus; halbe Fahrbahnbreite m zum Dekodieren
     };
     const mean = ROLES.map(() => uniform(new Vector3(1, 1, 1)));
+    const atScale = ROLES.map(() => uniform(AT_SCALE));
     const color = texture(colorTex, uv()), mask = texture(maskTex, uv()), road = texture(roadUVTex, uv());
     const mat = new MeshStandardNodeMaterial({ roughness: 1, metalness: 0 });
     mat.colorNode = color;
@@ -110,18 +112,18 @@ export function createTerrainMaterial(colorTex, maskTex, roadUVTex, anisotropy) 
         const p = positionWorld.div(u.texScale), uvX = p.zy, uvY = p.xz, uvZ = p.xy;
         const bw = pow(N.abs(), vec3(TRI_SHARP)), bl = bw.div(bw.x.add(bw.y).add(bw.z));
         const tri = (smp, f) => f(smp(uvX), 'x').mul(bl.x).add(f(smp(uvY), 'y').mul(bl.y)).add(f(smp(uvZ), 'z').mul(bl.z));
-        // Anti-Tiling: zweites Sample gedreht (1/AT_SCALE groß), per Welt-Noise (AT_WAVE) eingemischt → die 4-m-Wiederholung
+        // Anti-Tiling: zweites Sample gedreht und 1/atScale groß, per Welt-Noise (AT_WAVE) eingemischt → die 4-m-Wiederholung
         // zerfällt an großen Flächen (Felswände, Wiesen). Normalen gleich gemischt, sonst liegen die Lichtkanten dort auf
         // einem anderen Muster als die sichtbaren Halme
         const anti = smoothstep(-0.3, 0.3, mx_noise_float(positionWorld.xz.mul(AT_WAVE)));
-        const rot = v => vec2(v.x.mul(AT_COS).sub(v.y.mul(AT_SIN)), v.x.mul(AT_SIN).add(v.y.mul(AT_COS))).mul(AT_SCALE);
-        const alb = i => st => mix(albedo.sample(st).depth(i), albedo.sample(rot(st)).depth(i), anti);
+        const rot = (v, i) => vec2(v.x.mul(AT_COS).sub(v.y.mul(AT_SIN)), v.x.mul(AT_SIN).add(v.y.mul(AT_COS))).mul(atScale[i]);
+        const alb = i => st => mix(albedo.sample(st).depth(i), albedo.sample(rot(st, i)).depth(i), anti);
         const tex = ROLES.map((_, i) => i === L.rock ? tri(alb(i), s => s) : alb(i)(uvY));
         // Detail-Normalen: OpenGL-Normal Map (u, v, oben), v gespiegelt (Zeile 0 = Bildoberkante liegt bei v = 0);
         // Whiteout-Blend je Projektion (B. Golus) → Welt-Normale
         const unpack = s => vec3(s.x.mul(2).sub(1), s.y.mul(2).sub(1).negate(), s.z.mul(2).sub(1));
         const back = t => vec3(t.x.mul(AT_COS).add(t.y.mul(AT_SIN)), t.y.mul(AT_COS).sub(t.x.mul(AT_SIN)), t.z); // Drehung von rot() zurück
-        const nor = i => st => mix(unpack(normals.sample(st).depth(i)), back(unpack(normals.sample(rot(st)).depth(i))), anti);
+        const nor = i => st => mix(unpack(normals.sample(st).depth(i)), back(unpack(normals.sample(rot(st, i)).depth(i))), anti);
         const white = {
             x: t => vec3(t.z.abs().mul(N.x), t.y.add(N.y), t.x.add(N.z)), // uv = (z, y)
             y: t => vec3(t.x.add(N.x), t.z.abs().mul(N.y), t.y.add(N.z)), // uv = (x, z)
@@ -175,6 +177,8 @@ export function createTerrainMaterial(colorTex, maskTex, roadUVTex, anisotropy) 
     self.setColorTex = t => { color.value = t; };
     self.setMask = (t, curvScale) => { mask.value = t; u.curvScale.value = curvScale; };
     self.setRoadUV = (t, halfWidth) => { road.value = t; u.halfWidth.value = halfWidth; };
+    // {Rolle: Maßstab des zweiten Samples} aus BIOMES[].antiTile, fehlende Rollen AT_SCALE
+    self.setAntiTile = (scales = {}) => ROLES.forEach((r, i) => { atScale[i].value = scales[r] ?? AT_SCALE; });
     // v: Rampen-Höhen (m über waterLevel), Fels-Neigung m/m, Wasserspiegel, Kies-Krümmung m, Kachel m, Überblendung m
     self.update = v => {
         for (const k of Object.keys(v)) if (u[k].value.isVector3) u[k].value.set(...v[k]); else u[k].value = v[k];
