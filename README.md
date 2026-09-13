@@ -61,7 +61,7 @@ export heightmap, splatmap, masks, road and town layout and a 3D mesh for your e
 - **Your own textures**: replace `app/public/textures/<biome>/<layer>/albedo.jpg` and `normal.jpg` (OpenGL normal map,
   any size; layers `ground`, `rock`, `scree`, `shore`, `top`, `road`); sources and licenses in
   `app/public/textures/<biome>/SOURCES.md`; `node tools/fetch-textures.mjs <biome>` (in `app/`) downloads the originals
-  again. Only the active biome is loaded (~16–20 MB)
+  again. Only the active biome is loaded (~14–19 MB)
 - *Textures* off shows the plain color map (lighter on weak GPUs); *Texture size* 1K needs a quarter of the GPU memory
 
 **Tool**

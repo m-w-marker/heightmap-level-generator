@@ -15,7 +15,7 @@ const ICE_ROUGH = 0.35; // glatter → die Risse der Detail-Normalen glitzern im
 const LINE_W = 0.15, EDGE_IN = 0.3, DASH_LEN = 3, PAINT = 0.85; // PAINT < 1: abgefahrene Farbe, Belag scheint durch
 const YELLOW = [0.78, 0.5, 0.06], WHITE = [0.75, 0.75, 0.72]; // linear
 const TRI_SHARP = 4; // Triplanar: Achsen-Gewicht |N|^4 → schmale Übergangszone zwischen den Projektionen
-const AT_SCALE = 0.29, AT_WAVE = 0.04; // Anti-Tiling: zweites Sample 3,4× größer; Mischmuster ~25 m
+const AT_SCALE = 1, AT_WAVE = 0.04; // Anti-Tiling: zweites Sample gleich groß (vergrößert gab es Riesenhalme); Mischmuster ~25 m
 const AT_COS = Math.cos(0.61), AT_SIN = Math.sin(0.61); // gedreht, damit die Kachelkanten nicht parallel liegen // Höhen-Blend: helle Texel (Steine) setzen sich im Übergang durch statt weich zu mischen
 
 // Alle Schichten einer Art als RGBA8-Array size², Zeile 0 = Bildoberkante; eigene Dateien werden auf size skaliert
@@ -110,7 +110,7 @@ export function createTerrainMaterial(colorTex, maskTex, roadUVTex, anisotropy) 
         const p = positionWorld.div(u.texScale), uvX = p.zy, uvY = p.xz, uvZ = p.xy;
         const bw = pow(N.abs(), vec3(TRI_SHARP)), bl = bw.div(bw.x.add(bw.y).add(bw.z));
         const tri = (smp, f) => f(smp(uvX), 'x').mul(bl.x).add(f(smp(uvY), 'y').mul(bl.y)).add(f(smp(uvZ), 'z').mul(bl.z));
-        // Anti-Tiling: zweites Sample 1/AT_SCALE größer und gedreht, per Welt-Noise (AT_WAVE) eingemischt → die 4-m-Wiederholung
+        // Anti-Tiling: zweites Sample gedreht (1/AT_SCALE groß), per Welt-Noise (AT_WAVE) eingemischt → die 4-m-Wiederholung
         // zerfällt an großen Flächen (Felswände, Wiesen). Normalen gleich gemischt, sonst liegen die Lichtkanten dort auf
         // einem anderen Muster als die sichtbaren Halme
         const anti = smoothstep(-0.3, 0.3, mx_noise_float(positionWorld.xz.mul(AT_WAVE)));

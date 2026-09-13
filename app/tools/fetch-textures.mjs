@@ -17,7 +17,7 @@ const SETS = {
         rock: { src: 'ambientcg', id: 'Rock030' },
         scree: { src: 'ambientcg', id: 'Gravel022' },
         shore: { src: 'polyhaven', id: 'coast_sand_01' },
-        top: { src: 'ambientcg', id: 'Snow006' },
+        top: { src: 'ambientcg', id: 'Snow002' }, // Snow006 zeigte Fußspuren
         road: { src: 'polyhaven', id: 'gravel_road' },
     },
     steppe: {
@@ -37,7 +37,7 @@ const SETS = {
         road: { src: 'polyhaven', id: 'asphalt_01' },
     },
     snow: {
-        ground: { src: 'ambientcg', id: 'Snow006' }, // snow_02: dunkle Zweige wiederholen sich
+        ground: { src: 'ambientcg', id: 'Snow002' }, // snow_02: Zweige, Snow006: Fußspuren
         rock: { src: 'polyhaven', id: 'rock_face_03' },
         scree: { src: 'polyhaven', id: 'rocks_ground_05' },
         shore: { src: 'ambientcg', id: 'Ice003' }, // auch die Eisfläche; Ice002 glitzert wie Scherben
