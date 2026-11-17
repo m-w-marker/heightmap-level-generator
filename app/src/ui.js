@@ -19,6 +19,10 @@ export const TABS = {
             ['cliffDrop', 'Drop (m)', 0, 60, 0.5, 'Height step between plateaus.'],
             ['cliffCoverage', 'Coverage (%)', 0, 100, 1, 'Share of the map that has cliffs.'],
         ],
+        Strata: [
+            ['strataSharp', 'Terraces', 0, 10, 0.5, 'Rock layers break slopes into steps: flat ledges, steep risers. Higher = sharper steps; 0 = off.'],
+            ['strataStep', 'Layer height (m)', 1, 30, 0.5, 'Height of one rock layer.'],
+        ],
         Erosion: [
             ['erosionStrength', 'Strength (%)', 0, 100, 1, 'Rain and scree wear the terrain: gullies, softer slopes, debris fans. 0 = off.'],
             ['erosionIterations', 'Duration', 20, 600, 10, 'Simulation steps: longer = deeper, longer channels, slower generation.'],
@@ -31,6 +35,7 @@ export const TABS = {
             ['cliffWave', 'Plateau size (m)', 20, 300, 5, 'Wavelength of plateaus and cliff lines.'],
             ['cliffWidth', 'Cliff width (m)', 2, 60, 0.5, 'Horizontal width of a drop.'],
             ['cliffAreaWave', 'Cliff area size (m)', 40, 400, 5, 'Size of the areas that hold cliffs.'],
+            ['strataWarp', 'Layer warp (m)', 0, 40, 1, 'Layers rise and fall across the map instead of lying perfectly level.'],
         ],
     },
     Roads: {

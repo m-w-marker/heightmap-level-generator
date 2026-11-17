@@ -130,6 +130,9 @@ const params = {
     erosionStrength: 0, // % (0 = aus → Maps wie vor der Erosion, → Plan/Erosion.md)
     erosionIterations: 300,
     screeAngle: 90, // ° Schuttwinkel der thermischen Erosion; 90 = aus, darunter werden Abrisskanten zu Schutthängen
+    strataSharp: 0, // Gesteinsschichten: 0 = aus → Maps wie vorher (→ Plan/Badlands.md)
+    strataStep: 6,  // m Schichtdicke
+    strataWarp: 8,  // m Versatz der Schichten
     // Material (→ Plan/Texturierung.md): steuern 3D, Vorschau und Splatmap, ohne Regeneration; Defaults = frühere feste Werte
     biome: 'temperate', // Schlüssel in BIOMES (→ Plan/Biome.md); fehlt in alten Saves/Links → Default = bisheriger Look
     rockSlope: 35,   // ° Fels ab

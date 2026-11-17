@@ -34,6 +34,9 @@ struct Params {
     riverCount: f32,
     erosionRes: f32, // Raster von erosionDelta, wächst mit der Map (→ Plan/Aufloesung.md)
     lakeRes: f32,    // Raster des See-Spiegelfelds = Prepass
+    strataStep: f32,  // m Schichtdicke (→ Plan/Badlands.md)
+    strataSharp: f32, // Exponent − 1 der Stufenform; 0 = aus → bitgleich
+    strataWarp: f32,  // m Höhenversatz der Schichten
 };
 
 // = MAX_ROADS / ROAD_POINTS / MAX_TOWNS in roadgen.js (Layout-Test prüft); roads-Array-Größe = Produkt
@@ -51,6 +54,7 @@ const LAKE_EDGE = 0.25;   // bilineare Seemaske: Wasser bis ~¾ Zelle über die 
 const RIVER_SINK = 0.4; // = RIVER_SINK in hydro.js (Layout JSON)
 
 const SLOPE_VAR_WAVE = 40.0; // m
+const STRATA_WARP_WAVE = 150.0; // m Wellenlänge des Schicht-Versatzes
 const SLOPE_MIN = 0.1745;    // 10° in rad
 const SLOPE_MAX = 1.0472;    // 60° in rad (steiler → senkrechte Streifenwände im 512²-Mesh)
 const BANK_CURVE = 10.0;     // m: Böschungsneigung (tan) wächst je BANK_CURVE m Abstand um 1 (→ Plan/Boeschung.md)
@@ -183,6 +187,13 @@ fn rawTerrain(w: vec2<f32>) -> f32 {
     let cMask = smoothstep(u.params.cliffThr - 0.15, u.params.cliffThr + 0.15, fbm(w * u.params.cliffMaskScale, layerKey(4u), 3));
     let band = max(u.params.cliffWidth * u.params.cliffScale, 0.02);
     h += cMask * (smoothstep(0.5 - band, 0.5 + band, cn) * 2.0 - 1.0) * u.params.cliffDrop * 0.5;
+
+    // 4) Gesteinsschichten: je Schicht x^k (k ≥ 1) → flache Stufe, steile Kante, h' ≤ h → maxH bleibt gültig
+    if (u.params.strataSharp > 0.0) {
+        let off = fbm(w / STRATA_WARP_WAVE, layerKey(8u), 2) * u.params.strataWarp; // Schichten wellig statt Höhenlinien
+        let q = (h + off) / u.params.strataStep;
+        h = (floor(q) + pow(max(fract(q), 1e-6), 1.0 + u.params.strataSharp)) * u.params.strataStep - off;
+    }
     return h;
 }
 

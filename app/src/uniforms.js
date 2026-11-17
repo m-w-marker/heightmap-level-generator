@@ -68,6 +68,9 @@ export const PARAM_FIELDS = {
     riverCount: p => p.riverCount,         // Flüsse aus hydrology(), 0 im Prepass
     erosionRes: p => grids(p.mapSize).ero, // Raster von erosionDelta (→ Plan/Aufloesung.md)
     lakeRes: p => grids(p.mapSize).pre,    // Raster des See-Spiegelfelds = Prepass
+    strataStep: p => p.strataStep,         // m Schichtdicke (→ Plan/Badlands.md)
+    strataSharp: p => p.strataSharp,       // 0 = aus
+    strataWarp: p => p.strataWarp,
 };
 
 // Raster je Map-Größe (→ Plan/Aufloesung.md): ein Pixel bleibt PX_M (512 m / 1024 px, → Plan/Pixel05.md); Vielfache von 128
