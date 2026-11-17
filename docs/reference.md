@@ -79,6 +79,7 @@ All distances are in meters (1 unit = 1 m), coverages and river catchment in % o
 | Terrain | Hills | `hillAmp`, `hillWave`, *`hillRoughness`* |
 | | Mountains | `mountainAmp`, `mountainCoverage`, *`mountainWave`*, *`clusterWave`* |
 | | Cliffs | `cliffDrop`, `cliffCoverage`, *`cliffWave`*, *`cliffWidth`*, *`cliffAreaWave`* |
+| | Strata | `strataSharp` (0 = off), `strataStep`, *`strataWarp`* |
 | | Erosion | `erosionStrength`, `erosionIterations`, `screeAngle` |
 | Roads | Road network | `townCount`, `clearingRadius`, `exitCount`, `extraLinks`, `roadMaxGrade`, *`townSpacing`*, *`reuse`*, *`slopePenalty`*, *`waterAvoid`* |
 | | Road edges | `roadWidth`, `roadSlope`, `roadSlopeVar`, `roadTolerance`, `levelSmoothing`, `roadOffset`, `roadColor` |
@@ -87,7 +88,7 @@ All distances are in meters (1 unit = 1 m), coverages and river catchment in % o
 | | Rivers & lakes | `riverCatchment`, `riverWidth`, `lakeArea` |
 | | Border ring | `rimAmp`, `rimZone`, *`rimWave`* |
 | Material | Biome | `biome` (`temperate`, `steppe`, `desert`, `snow`; missing in older files = `temperate`) |
-| | Rock & snow | `rockSlope`, `rockBlend`, `snowHeight`, `snowBlend` |
+| | Rock & snow | `rockSlope`, `rockBlend`, `snowHeight`, `snowBlend`, `rockBands` (0 = off), `bandHeight` |
 | | Ground | `sandHeight`, `gravelCurv` |
 | | Textures | `texScale`, `texFade`, `texTint` |
 | | View | *Textures* on/off, *Texture size* 1K / 2K (not saved) |

@@ -5,13 +5,13 @@ No install, no account.**
 
 **▶ Try it: https://m-w-marker.github.io/heightmap-level-generator/** (needs WebGPU, e.g. desktop Chrome or Edge)
 
-![16 generated maps in a 360° orbit: mountains, lakes, desert highway, eroded mountains, river valley, snow world, canyon and steppe, each with roads](docs/terrain.gif)
+![16 generated 768 m maps in a 360° orbit: badlands with layered rock, eroded mountains, snow world, canyons, steppe, desert highway and mountain lakes, each with roads](docs/terrain.gif)
 
 ## What it does
 
-- **Terrain on the GPU**, live while you drag sliders: hills, mountains, cliffs, erosion, rivers and lakes, 256–1280 m at 0.5 m per pixel
+- **Terrain on the GPU**, live while you drag sliders: hills, mountains, cliffs, rock terraces, erosion, rivers and lakes, 256–1280 m at 0.5 m per pixel
 - **Road network** with towns, following the terrain, grade-limited, never under water
-- **Four biomes**: temperate, steppe, desert, snow world, with textured 3D preview
+- **Four biomes**: temperate, steppe, desert, snow world, with textured 3D preview and colored rock bands (try the *Badlands* preset)
 - **Walk through it** in first person, compare seeds side by side, share a map as a link
 
 ![Procedural terrain generator in the browser: 3D terrain with hills, cliffs, lakes and a winding road, 2D heightmap preview and parameter panel](docs/generator.jpg)
