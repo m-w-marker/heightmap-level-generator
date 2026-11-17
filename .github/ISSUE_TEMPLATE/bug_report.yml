@@ -1,0 +1,58 @@
+name: Bug report
+description: Something is broken or looks wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Share link
+      description: Click **Link** in the toolbar and paste the URL here. It holds all settings, so the map can be reproduced exactly.
+      placeholder: https://m-w-marker.github.io/heightmap-level-generator/?...
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Load preset ...
+        2. Move slider ...
+        3. ...
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where?
+      options:
+        - Generation / terrain
+        - Roads / towns
+        - Rivers / lakes
+        - 3D view / textures / walk mode
+        - Export
+        - Other
+  - type: dropdown
+    id: target
+    attributes:
+      label: Export target (if export related)
+      options:
+        - Not export related
+        - Unreal Engine
+        - Unity
+        - Godot (Terrain3D)
+        - Web / three.js
+  - type: input
+    id: env
+    attributes:
+      label: Browser, OS and GPU
+      placeholder: Chrome 140, Windows 11, RTX 3060
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or console errors
+      description: Drag images in here. Console errors via F12 → Console help a lot.
