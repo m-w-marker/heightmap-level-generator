@@ -630,41 +630,45 @@ async function runGenerate() {
 
 // Presets = Startwerte (inkl. Seed) + Overrides (→ Plan/PresetsAusfahrten.md, Plan/UI.md)
 const PRESETS = {
-    'Rolling hills': { baseLevel: 30, hillAmp: 9, hillWave: 90, hillRoughness: 0.35, mountainAmp: 25, mountainWave: 200, clusterWave: 250,
+    'Rolling hills': { baseLevel: 30, hillAmp: 11, hillWave: 90, hillRoughness: 0.35, mountainAmp: 25, mountainWave: 200, clusterWave: 250,
         mountainCoverage: 25, cliffDrop: 5, cliffWidth: 20, cliffCoverage: 10, rimAmp: 35, rimZone: 60,
-        townCount: 6, townSpacing: 70, extraLinks: 3, roadSlopeVar: 15 },
-    'Pasture': { baseLevel: 25, hillAmp: 4, hillWave: 100, hillRoughness: 0.3, mountainAmp: 0, mountainCoverage: 0,
-        cliffDrop: 0, cliffCoverage: 0, rimAmp: 25, rimZone: 70, rimWave: 120, townCount: 4, townSpacing: 90, extraLinks: 1 },
+        townCount: 6, townSpacing: 70, extraLinks: 3, roadSlopeVar: 15, erosionStrength: 40 },
+    'Pasture': { baseLevel: 25, hillAmp: 6, hillWave: 100, hillRoughness: 0.3, mountainAmp: 0, mountainCoverage: 0,
+        cliffDrop: 0, cliffCoverage: 0, rimAmp: 25, rimZone: 70, rimWave: 120, townCount: 4, townSpacing: 90, extraLinks: 1,
+        erosionStrength: 30, riverCatchment: 2.5, riverWidth: 4 },
     'Mountains': { baseLevel: 25, hillAmp: 12, hillWave: 120, hillRoughness: 0.6, mountainAmp: 100, mountainWave: 200, clusterWave: 260,
         mountainCoverage: 45, cliffDrop: 15, cliffCoverage: 15, rimAmp: 70, rimZone: 60,
-        townCount: 4, townSpacing: 60, slopePenalty: 7, extraLinks: 1 },
-    'Canyon / Plateaus': { baseLevel: 45, hillAmp: 3, hillWave: 120, hillRoughness: 0.35, mountainAmp: 0, mountainCoverage: 0,
-        cliffDrop: 45, cliffWave: 120, cliffWidth: 8, cliffAreaWave: 220, cliffCoverage: 70, rimAmp: 30,
-        townCount: 5, slopePenalty: 5, roadSlopeVar: 10, roadMaxGrade: 25 }, // 12 % → Rampen ~375 m je Klippe
-    'Lakes': { baseLevel: 18.5, hillAmp: 6, hillWave: 110, hillRoughness: 0.35, mountainAmp: 15, mountainCoverage: 10,
-        cliffDrop: 4, cliffCoverage: 5, waterLevel: 16, rimAmp: 30, townCount: 5, waterAvoid: 4 },
+        townCount: 4, townSpacing: 60, slopePenalty: 7, extraLinks: 1, erosionStrength: 40, screeAngle: 70 },
+    'Canyon / Plateaus': { baseLevel: 45, hillAmp: 5, hillWave: 120, hillRoughness: 0.35, mountainAmp: 0, mountainCoverage: 0,
+        cliffDrop: 45, cliffWave: 120, cliffAreaWave: 220, cliffCoverage: 70, rimAmp: 30,
+        townCount: 5, slopePenalty: 5, roadSlopeVar: 10, roadMaxGrade: 25, // 12 % → Rampen ~375 m je Klippe
+        // Steppe + Schichten: graue Wände im Gras wirkten wie Streifen-Artefakte (→ Plan/erledigt/Badlands.md)
+        biome: 'steppe', roadColor: BIOMES.steppe.road, cliffWidth: 12, erosionStrength: 45, screeAngle: 70,
+        strataSharp: 4, strataStep: 5, rockBands: 0.7, bandHeight: 3 },
+    'Lakes': { baseLevel: 18.5, hillAmp: 6, hillWave: 110, hillRoughness: 0.35, mountainAmp: 25, mountainCoverage: 15,
+        cliffDrop: 4, cliffCoverage: 5, waterLevel: 16, rimAmp: 30, townCount: 5, waterAvoid: 4, erosionStrength: 35, riverCatchment: 2, riverWidth: 5 },
 };
 // Schuttwinkel 65°: kappt die 1-Zellen-Grate starker Erosion, Abrisskanten bleiben steil (→ Plan/Erosion.md)
 PRESETS['Eroded mountains'] = { ...PRESETS.Mountains, erosionStrength: 70, erosionIterations: 400, screeAngle: 65 };
 // Flüsse folgen den Erosionsrinnen (→ Plan/Fluesse.md)
-PRESETS['River valley'] = { ...PRESETS['Rolling hills'], erosionStrength: 40, riverCatchment: 1.5, riverWidth: 7 };
+PRESETS['River valley'] = { ...PRESETS['Rolling hills'], erosionStrength: 50, riverCatchment: 1.5, riverWidth: 7, mountainAmp: 35 };
 // Biom + Gelände + Straßen zusammen (→ Plan/Biome.md); Straßenfarbe des Bioms wie beim Wechsel im Tab Material
 const biome = b => ({ biome: b, roadColor: BIOMES[b].road });
-PRESETS.Steppe = { ...biome('steppe'), baseLevel: 21, hillAmp: 5, hillWave: 170, hillRoughness: 0.35, mountainAmp: 30,
-    mountainWave: 260, clusterWave: 320, mountainCoverage: 12, cliffDrop: 6, cliffCoverage: 15, rimAmp: 30, rimZone: 60,
-    erosionStrength: 25, riverCatchment: 2, riverWidth: 5, sandHeight: 0.8,
+PRESETS.Steppe = { ...biome('steppe'), baseLevel: 21, hillAmp: 5, hillWave: 170, hillRoughness: 0.35, mountainAmp: 45,
+    mountainWave: 260, clusterWave: 320, mountainCoverage: 20, cliffDrop: 6, cliffCoverage: 15, rimAmp: 30, rimZone: 60,
+    erosionStrength: 45, riverCatchment: 2, riverWidth: 5, sandHeight: 0.8,
     roadWidth: 7, roadOffset: 0.2, roadTolerance: 0.4, levelSmoothing: 14, roadMaxGrade: 8, slopePenalty: 5,
-    townCount: 4, townSpacing: 110, extraLinks: 1, exitCount: 2 };
+    townCount: 4, townSpacing: 110, extraLinks: 1, exitCount: 2, strataSharp: 2, strataStep: 6, rockBands: 0.5, bandHeight: 3 };
 // Asphalt-Highway über Ebene mit Tafelbergen; baseLevel > waterLevel + cliffDrop/2 → trocken
 PRESETS['Desert highway'] = { ...biome('desert'), baseLevel: 36, hillAmp: 2.5, hillWave: 200, hillRoughness: 0.3,
     mountainAmp: 0, mountainCoverage: 0, cliffDrop: 30, cliffWave: 140, cliffWidth: 8, cliffAreaWave: 260, cliffCoverage: 25,
     rimAmp: 35, rimZone: 60, roadWidth: 10, roadSlope: 30, roadSlopeVar: 5, roadOffset: 0.3, roadTolerance: 0.3,
     levelSmoothing: 25, roadMaxGrade: 6, slopePenalty: 8, townCount: 2, townSpacing: 150, clearingRadius: 20,
-    exitCount: 2, extraLinks: 0, reuse: 0.3 };
+    exitCount: 2, extraLinks: 0, reuse: 0.3, strataSharp: 3, strataStep: 5, rockBands: 0.7, bandHeight: 3, erosionStrength: 30, screeAngle: 75 };
 PRESETS['Snow world'] = { ...biome('snow'), baseLevel: 20, hillAmp: 8, hillWave: 110, hillRoughness: 0.45, mountainAmp: 45,
     mountainCoverage: 25, cliffDrop: 8, cliffCoverage: 10, rimAmp: 60, erosionStrength: 30, screeAngle: 70,
     riverCatchment: 2, riverWidth: 6, rockSlope: 40, sandHeight: 0.3, townCount: 4, slopePenalty: 6 }; // schmales Eis-Ufer
-// Gesteinsschichten über Bergen und Tafeln, Erosion zerfurcht die Stufen (→ Plan/Badlands.md); Schärfe > ~6 bei
+// Gesteinsschichten über Bergen und Tafeln, Erosion zerfurcht die Stufen (→ Plan/erledigt/Badlands.md); Schärfe > ~6 bei
 // dünnen Schichten → Kamm-Riefen an den Flanken
 PRESETS.Badlands = { ...biome('desert'), baseLevel: 35, hillAmp: 4, hillWave: 150, hillRoughness: 0.4, mountainAmp: 35,
     mountainWave: 200, clusterWave: 260, mountainCoverage: 35, cliffDrop: 20, cliffWave: 110, cliffWidth: 10,
