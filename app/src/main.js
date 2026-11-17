@@ -662,6 +662,12 @@ PRESETS['Desert highway'] = { ...biome('desert'), baseLevel: 36, hillAmp: 2.5, h
 PRESETS['Snow world'] = { ...biome('snow'), baseLevel: 20, hillAmp: 8, hillWave: 110, hillRoughness: 0.45, mountainAmp: 45,
     mountainCoverage: 25, cliffDrop: 8, cliffCoverage: 10, rimAmp: 60, erosionStrength: 30, screeAngle: 70,
     riverCatchment: 2, riverWidth: 6, rockSlope: 40, sandHeight: 0.3, townCount: 4, slopePenalty: 6 }; // schmales Eis-Ufer
+// Gesteinsschichten über Bergen und Tafeln, Erosion zerfurcht die Stufen (→ Plan/Badlands.md); Schärfe > ~6 bei
+// dünnen Schichten → Kamm-Riefen an den Flanken
+PRESETS.Badlands = { ...biome('desert'), baseLevel: 35, hillAmp: 4, hillWave: 150, hillRoughness: 0.4, mountainAmp: 35,
+    mountainWave: 200, clusterWave: 260, mountainCoverage: 35, cliffDrop: 20, cliffWave: 110, cliffWidth: 10,
+    cliffAreaWave: 220, cliffCoverage: 40, strataSharp: 5, strataStep: 5, strataWarp: 10, erosionStrength: 50,
+    screeAngle: 70, rimAmp: 40, rimZone: 60, townCount: 3, exitCount: 2, extraLinks: 1, roadWidth: 5, slopePenalty: 6 };
 function applyPreset(overrides) {
     Object.assign(params, DEFAULTS, overrides);
     setRoadColor();
