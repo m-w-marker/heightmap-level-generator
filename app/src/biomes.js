@@ -6,6 +6,7 @@ export const ROLES = ['ground', 'rock', 'scree', 'shore', 'top', 'road'];
 
 // ramp: sRGB 0–255 in der Reihenfolge der STOPS (Ufer, Boden, Boden dunkel, Fels-Zone, Schutt, oben); rock: steile Hänge;
 // water: Farbkarte tief/flach + Wasser-Mesh; road: Straßenfarbe, die ein Biom-Wechsel setzt; sky: Hintergrund + Nebel;
+// bands: Fels-Farben der Gesteinsbänder (rockBands);
 // hemi: [Himmel, Boden, Stärke], sun: [Farbe, Stärke]; ice: Seen/Flüsse gefroren → water = Eis-Farben, Wasser-Mesh mit
 // Eis-Material (Ufer-Textur) statt water.mesh; markings: Asphalt mit Mittel- und Randlinien (material.js);
 // antiTile: {Rolle: Maßstab des zweiten Anti-Tiling-Samples}, Standard 0.29 (3,4× größer) – kleiner vergrößern bei
@@ -15,6 +16,7 @@ export const BIOMES = {
         label: 'Temperate',
         ramp: [[194, 178, 128], [110, 144, 77], [74, 110, 58], [112, 104, 92], [150, 146, 138], [240, 244, 248]],
         rock: [110, 102, 92],
+        bands: [[110, 102, 92], [134, 124, 108], [90, 84, 78], [152, 142, 126], [120, 108, 96]],
         water: { deep: [42, 90, 158], shallow: [62, 118, 180], mesh: 0x3d78b0 },
         road: '#9a8462',
         sky: 0x0e1116,
@@ -25,6 +27,7 @@ export const BIOMES = {
         label: 'Steppe',
         ramp: [[150, 134, 104], [150, 146, 96], [118, 120, 80], [128, 116, 98], [150, 142, 126], [206, 202, 192]],
         rock: [124, 110, 94],
+        bands: [[124, 110, 94], [148, 130, 104], [102, 92, 80], [166, 150, 122], [136, 116, 94]],
         water: { deep: [38, 78, 112], shallow: [72, 110, 128], mesh: 0x3f6f8a },
         road: '#5a5854',
         markings: true,
@@ -37,6 +40,7 @@ export const BIOMES = {
         label: 'Desert',
         ramp: [[216, 206, 186], [206, 162, 112], [192, 144, 98], [172, 112, 78], [186, 142, 106], [226, 192, 152]],
         rock: [164, 102, 72],
+        bands: [[176, 86, 58], [208, 140, 90], [232, 204, 166], [146, 70, 50], [196, 114, 74], [222, 170, 120]],
         water: { deep: [28, 92, 118], shallow: [64, 150, 158], mesh: 0x2f8f9a },
         road: '#3e3c3a',
         markings: true,
@@ -48,6 +52,7 @@ export const BIOMES = {
         label: 'Snow world',
         ramp: [[196, 216, 228], [232, 237, 243], [218, 225, 234], [122, 120, 124], [176, 179, 186], [168, 198, 218]],
         rock: [96, 96, 102],
+        bands: [[96, 96, 102], [120, 118, 122], [78, 80, 88], [136, 132, 132], [104, 100, 104]],
         water: { deep: [120, 164, 190], shallow: [184, 212, 228], mesh: 0x46708f },
         ice: true,
         road: '#6c6e72',

@@ -141,6 +141,8 @@ const params = {
     snowBlend: 25,   // m Schutt → Schnee
     sandHeight: 1.5, // m Ufer über dem örtlichen Wasserspiegel
     gravelCurv: 0,   // m: Mulden tiefer als das → Kies (nur 3D); 0 = aus
+    rockBands: 0,    // Gesteinsbänder im Fels: 0 = aus → Farben wie vorher (→ Plan/Badlands.md)
+    bandHeight: 5,   // m je Farbband
     texScale: 4,     // m je Textur-Kachel
     texFade: 150,    // m Kameraabstand, ab dem das Farbbild statt der Texturen gilt
     texTint: 1,      // Texturen auf die Farbkarte getönt (1) … eigene Texturfarbe (0)
@@ -388,7 +390,7 @@ const STOPS = [[0], [1.5], [45], [85], [115], [140]];
 let bio = BIOMES.temperate; // Biom der Farbkarte (applyMaterial)
 const ROCK_SLOPE = [0.7, 1.2]; // Hangneigung m/m → Überblendung zu Fels (aus rockSlope / rockBlend)
 const ALPINE = 55; // m: Fels-Zone beginnt so weit unter der Schneegrenze (früher fest 85 bei Schnee 140)
-const ramp = () => ({ stops: STOPS, bio, rockSlope: ROCK_SLOPE, road: roadRGB });
+const ramp = () => ({ stops: STOPS, bio, rockSlope: ROCK_SLOPE, road: roadRGB, bands: { h: params.bandHeight, k: params.rockBands } });
 
 // Material-Regler + Biom → Farbrampe, Fels-Neigung, Stimmung und Auto-Material; Stufen streng steigend, sonst teilt die
 // Rampe durch 0
@@ -666,7 +668,7 @@ PRESETS['Snow world'] = { ...biome('snow'), baseLevel: 20, hillAmp: 8, hillWave:
 // dünnen Schichten → Kamm-Riefen an den Flanken
 PRESETS.Badlands = { ...biome('desert'), baseLevel: 35, hillAmp: 4, hillWave: 150, hillRoughness: 0.4, mountainAmp: 35,
     mountainWave: 200, clusterWave: 260, mountainCoverage: 35, cliffDrop: 20, cliffWave: 110, cliffWidth: 10,
-    cliffAreaWave: 220, cliffCoverage: 40, strataSharp: 5, strataStep: 5, strataWarp: 10, erosionStrength: 50,
+    cliffAreaWave: 220, cliffCoverage: 40, strataSharp: 5, strataStep: 5, strataWarp: 10, rockBands: 0.8, bandHeight: 2.5, erosionStrength: 50,
     screeAngle: 70, rimAmp: 40, rimZone: 60, townCount: 3, exitCount: 2, extraLinks: 1, roadWidth: 5, slopePenalty: 6 };
 function applyPreset(overrides) {
     Object.assign(params, DEFAULTS, overrides);

@@ -11,6 +11,20 @@ export const rockWeight = (s, [lo, hi]) => Math.min(Math.max((s - lo) / (hi - lo
 // innere Hälfte war bei 0,5 m/px 1 px breit → Sägezahn am Straßenrand (→ Plan/Pixel05.md)
 export const roadWeight = m => Math.min(Math.max(m, 0), 1);
 
+// Gesteinsbänder (→ Plan/Badlands.md): Fels-Farbe je Höhenband aus bio.bands, nur nach Höhe → waagrechte Schichten wie
+// in echten Badlands; ramp.bands = { h: m je Band, k: 0–1 Stärke }, k = 0 → bio.rock wie vorher
+const BAND_SOFT = 0.2; // Anteil des Bands, über den es in das nächste übergeht → keine Pixeltreppe
+const bandPick = (P, i) => P[(Math.imul(i, 0x9E3779B1) >>> 16) % P.length]; // ganzzahliger Hash → Palette ohne Muster
+const rockRGB = [0, 0, 0]; // wiederverwendet: terrainColor läuft 1M× pro Bild
+export function rockColor(ramp, hm) {
+    const { bio, bands } = ramp;
+    if (!(bands?.k > 0)) return bio.rock;
+    const q = hm / bands.h, i = Math.floor(q), a = bandPick(bio.bands, i), b = bandPick(bio.bands, i + 1);
+    const t = Math.min(Math.max((q - i - 1 + BAND_SOFT) / BAND_SOFT, 0), 1), f = t * t * (3 - 2 * t);
+    for (let c = 0; c < 3; c++) rockRGB[c] = bio.rock[c] + (a[c] + (b[c] - a[c]) * f - bio.rock[c]) * bands.k;
+    return rockRGB;
+}
+
 // schreibt 0–255-Werte (→ Plan/Build.md Datenfluss); W = Wasserspiegel des Pixels, S = Ufer-Abstand m;
 // blue = false: kein Wasser-Blau, nass (S = 0) trägt die Ufer-Farbe
 export function terrainColor(out, o, ramp, waterLevel, hm, m, s, rel, W, S, blue = true) {
@@ -40,7 +54,7 @@ export function terrainColor(out, o, ramp, waterLevel, hm, m, s, rel, W, S, blue
             g = S[1] + (g - S[1]) * shore;
             b = S[2] + (b - S[2]) * shore;
         }
-        const k = rockWeight(s, ramp.rockSlope), R = bio.rock;
+        const k = rockWeight(s, ramp.rockSlope), R = rockColor(ramp, hm);
         r += (R[0] - r) * k;
         g += (R[1] - g) * k;
         b += (R[2] - b) * k;

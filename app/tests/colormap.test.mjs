@@ -37,5 +37,20 @@ for (const [name, bio] of Object.entries(BIOMES)) {
     check(same(px(p, R), px(c, R)) && same(px(p, 4 * n + 5), px(c, 4 * n + 5)), `${name}: trocken wie die Vorschau`);
 }
 
+// Gesteinsbänder (→ Plan/Badlands.md): aus = bitgleich, an = nur Fels ändert sich, Farbe hängt nur an der Höhe
+{
+    const bio = BIOMES.desert, stops = [0, 1.5, 45, 85, 115, 140].map((v, i) => [v, bio.ramp[i]]);
+    const steep = new Float32Array(n * n).fill(5); // tan > rockHi → voll Fels
+    const run = (bands, s) => colormapBytes(n, { stops, bio, rockSlope: [0.7, 1.2], road, bands }, h, m, s, zero, maxH, W, sea, S);
+    const plain = run(undefined, steep);
+    check(run({ h: 5, k: 0 }, steep).every((v, i) => v === plain[i]), 'Bänder k = 0 ≠ ohne Bänder');
+    const on = run({ h: 1, k: 1 }, steep), flat = run({ h: 1, k: 1 }, zero);
+    check(flat.every((v, i) => v === run(undefined, zero)[i]), 'Bänder färben flaches Gelände');
+    let diff = 0;
+    for (let i = 0; i < n * n; i++) if (i % n > 3 && i !== R && !same(px(on, i), px(plain, i))) diff++;
+    check(diff > 0, 'Bänder ändern den Fels nicht');
+    check(same(px(on, 4 * n + 6), px(on, 6 * n + 6)), 'gleiche Höhe → gleiche Bandfarbe');
+}
+
 if (fail) process.exit(1);
-console.log('Farbkarte: OK — nass = Ufer-Farbe ohne Kante, kein Wasser-Blau, Straße = Straßenfarbe, n² · 4, trocken wie die Vorschau (4 Biome)');
+console.log('Farbkarte: OK — nass = Ufer-Farbe ohne Kante, kein Wasser-Blau, Straße = Straßenfarbe, n² · 4, trocken wie die Vorschau (4 Biome), Gesteinsbänder nur im Fels, aus = bitgleich');

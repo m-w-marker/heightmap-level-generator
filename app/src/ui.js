@@ -95,6 +95,8 @@ export const TABS = {
             ['rockBlend', 'Rock blend (°)', 2, 40, 1, 'Extra steepness until the slope is fully rock.'],
             ['snowHeight', 'Snow line (m)', 20, 300, 5, 'Height above the water level where the ground is fully snow; the scree and rock zones below move with it.'],
             ['snowBlend', 'Snow blend (m)', 5, 80, 1, 'Height over which scree turns into snow.'],
+            ['rockBands', 'Rock bands', 0, 1, 0.05, 'Colors steep rock in horizontal layers of the biome rock tones, like sediment in badlands. 0 = off.'],
+            ['bandHeight', 'Band height (m)', 1, 30, 0.5, 'Thickness of one colored rock layer.'],
         ],
         Ground: [
             ['sandHeight', 'Shore sand (m)', 0, 5, 0.1, 'Sand on the shore up to this height above the local water level (sea, lake, river).'],
